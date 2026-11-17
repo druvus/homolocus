@@ -725,18 +725,18 @@ results/
 
 ```toml
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "homolocus"
 version = "0.1.0"
-description = "Reference-guided genomic region reconstruction and visualization"
+description = "Find homologous genomic regions in bacterial genomes from the proteins of a reference region, tolerant of gene loss, insertions, duplications and rearrangements."
 requires-python = ">=3.10"
 dependencies = ["biopython", "pandas", "matplotlib", "pyrodigal"]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "pytest-cov", "hypothesis", "ruff", "mypy"]
 
 [project.scripts]
 homolocus = "homolocus.cli:main"
@@ -756,7 +756,7 @@ homolocus/
 ├── pyproject.toml
 ├── README.md
 ├── SPECIFICATION.md
-├── AGENTS.md
+├── CLAUDE.md
 ├── src/homolocus/
 │   ├── __init__.py
 │   ├── cli.py
