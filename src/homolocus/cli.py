@@ -43,7 +43,7 @@ OPTION_HELP = {
     "padding_bp": "base pairs added on each side of a candidate",
     "edge_margin_bp": "distance from a contig end that flags a candidate as edge",
     "min_split_contribution": "share of a gene a split fragment must add",
-    "max_fragment_overlap": "largest overlap between split fragments",
+    "max_fragment_overlap": "largest overlap between split fragments or fused parts",
     "min_fusion_part_coverage": "coverage each fused part must reach",
     "content": "weight of the content component",
     "similarity": "weight of the similarity component",
