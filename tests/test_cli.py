@@ -4,11 +4,8 @@ import dataclasses
 from pathlib import Path
 
 import pytest
-from Bio import SeqIO
-from Bio.Seq import Seq
-from Bio.SeqFeature import FeatureLocation, SeqFeature
-from Bio.SeqRecord import SeqRecord
 
+from genome_files import fasta, genbank
 from homolocus import (
     DiamondSearch,
     FamilyGrouping,
@@ -131,23 +128,6 @@ def test_top_level_help_describes_the_tool(capsys) -> None:
     assert "homolocus find" in capsys.readouterr().out
 
 
-def planted(dna, orfs):
-    """Sequence of ``orfs`` separated by 60 random bases, and their CDS features."""
-    parts, features, position = [dna.random(60)], [], 60
-    for orf in orfs:
-        features.append(SeqFeature(FeatureLocation(position, position + len(orf), 1), type="CDS"))
-        parts += [orf, dna.random(60)]
-        position += len(orf) + 60
-    return "".join(parts), features
-
-
-def genbank(path, record_id, dna, make_record, orfs=None):
-    """A GenBank record of planted ORFs (three random ones by default)."""
-    sequence, features = planted(dna, orfs or [dna.orf(150) for _ in range(3)])
-    SeqIO.write([make_record(record_id, sequence, features)], path, "genbank")
-    return path
-
-
 @pytest.fixture
 def inputs(tmp_path, dna, make_record):
     """Command-line arguments for a readable GenBank reference and target."""
@@ -266,10 +246,7 @@ def test_errors_print_nothing_on_stdout(inputs, tmp_path, capsys) -> None:
 def test_find_end_to_end_with_a_predicted_fasta_target(tmp_path, dna, make_record, capsys) -> None:
     orfs = [dna.orf(150) for _ in range(3)]
     reference = genbank(tmp_path / "ref.gbk", "ref", dna, make_record, orfs)
-    sequence, _ = planted(dna, orfs)
-    contig = dna.random(3000) + sequence + dna.random(3000)
-    target = tmp_path / "target.fna"
-    SeqIO.write([SeqRecord(Seq(contig), id="t1", description="")], target, "fasta")
+    target = fasta(tmp_path / "target.fna", "t1", dna, orfs)
     output = tmp_path / "out"
     argv = ["find", "--reference", str(reference), "--genome", str(target), "--output", str(output)]
     assert main([*argv, "--threads", "1"]) == 0
