@@ -218,7 +218,8 @@ The region detection algorithm must find the reference region even if its orient
 
 - Canonical ID: `{contig_id}|{start_1based}-{end_1based}|{strand_char}`, with `+` or `-`.
 - `locus_tag`, `gene_name` and `protein_id` are metadata and never used as keys.
-- **[PROPOSED]** DIAMOND FASTA headers use short sequential tokens (`g000001`), with a stored mapping back to canonical IDs. This avoids problems with special characters in contig IDs. It is an implementation detail with no behavioural effect.
+- **[PROPOSED]** DIAMOND FASTA headers use short sequential tokens, with a stored mapping back to canonical IDs. This avoids problems with special characters in contig IDs. Reference proteins get `r000001`, `r000002`, …, and target proteins `t000001`, …; one index serves both searches.
+- **[DECIDED]** The mapping is written to `alignments/protein_ids.tsv` (columns `token`, `gene_id`), so the unchanged raw DIAMOND files can be read (6.4, 14).
 
 ────────
 
@@ -426,8 +427,14 @@ search = DiamondSearch(
     sensitivity="sensitive",
     max_target_seqs=100,
     max_hsps=0,                 # explicit; 0 = report all HSPs per pair
+    hsp_evalue=1e-3,            # per-HSP cutoff passed to DIAMOND
+    threads=None,               # DIAMOND threads; None = DIAMOND's default
 )
 ```
+
+- **[DECIDED]** `evalue` is the pair-level threshold applied to a pair's best HSP (5.7). DIAMOND's own `--evalue` receives the looser per-HSP cutoff `hsp_evalue` (default 1e-3, never stricter than `evalue`), so weak secondary HSPs of real matches survive and count toward coverage.
+- **[DECIDED]** `threads` sets the number of threads for both `diamond makedb` and `diamond blastp`. `None` passes no flag, leaving DIAMOND's default.
+- **[PROPOSED]** DIAMOND 2.0 or newer is required. The installed version is checked at runtime and recorded in the run metadata.
 
 - `min_query_coverage` and `min_subject_coverage` are removed from the search configuration.
 - **Do not use DIAMOND's own `--query-cover`, `--subject-cover` or `--id` filters.** They act per HSP and would contradict the aggregation rule. Filter in Python after aggregation.
@@ -447,7 +454,8 @@ search = DiamondSearch(
 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen
 ```
 
-- Raw output is written unchanged to `alignments/diamond.tsv`.
+- Raw output is written unchanged to `alignments/diamond.tsv`. It contains tokens; `alignments/protein_ids.tsv` maps them to gene IDs (4.1).
+- **[PROPOSED]** Parsed alignments are sorted by query token, subject token, query start and subject start, because DIAMOND's output order can vary with threads (14, idempotence).
 - Coordinates are converted from 1-based inclusive when parsed.
 
 ### 6.5 Searches performed
@@ -756,7 +764,8 @@ results/
 │   └── ...
 ├── alignments/
 │   ├── diamond.tsv             # raw main search
-│   └── reference_self.tsv      # raw self search (families)
+│   ├── reference_self.tsv      # raw self search (families)
+│   └── protein_ids.tsv         # DIAMOND token -> canonical gene ID
 └── analysis.json
 ```
 
@@ -834,7 +843,8 @@ homolocus/
 │   │   └── translation.py         # CDS translation rules (3.2), pure
 │   ├── search/
 │   │   ├── __init__.py
-│   │   └── diamond.py
+│   │   ├── diamond.py
+│   │   └── protein_index.py       # DIAMOND tokens <-> gene IDs, FASTA, mapping file
 │   ├── detection/
 │   │   ├── __init__.py
 │   │   ├── families.py
@@ -910,6 +920,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 13. Invalid supplied `/translation` definition and one summary warning per contig, 3.2.
 14. Pyrodigal meta mode restricted to table-11 models, and training only when a contig is at least 20 kb, 2.2.
 15. Inclusive pair-level threshold comparisons, 5.7.
+16. DIAMOND token prefixes `r`/`t`, minimum DIAMOND 2.0, and deterministic sorting of parsed alignments, 4.1, 6.2, 6.4.
 
 **Still open:**
 
