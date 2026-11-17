@@ -5,7 +5,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from homolocus import Contig, Gene, RegionDetection
-from homolocus.detection.candidate_generation import EventWindow, chains, windows
+from homolocus.detection.candidate_generation import EventWindow, chains, padded_interval, windows
 
 
 def gene(start: int, end: int, contig_id: str = "t1", strand: int = 1) -> Gene:
@@ -207,3 +207,71 @@ def test_window_properties(case, max_region, max_genes, max_gap) -> None:
         for j, right in enumerate(event_sets)
     )
     assert [(w.start, w.end) for w in found] == sorted((w.start, w.end) for w in found)
+
+
+# Padding
+
+# Genes at 1-2 kb, 4-5 kb, [events 10-11 kb and 13-14 kb], 20-21 kb, 30-31 kb on a 40 kb contig.
+LEFT_2, LEFT_1, EVENT_1, EVENT_2, RIGHT_1, RIGHT_2 = (
+    gene(1000, 2000),
+    gene(4000, 5000),
+    gene(10_000, 11_000),
+    gene(13_000, 14_000),
+    gene(20_000, 21_000),
+    gene(30_000, 31_000),
+)
+PADDED_CONTIG = contig_of(LEFT_2, LEFT_1, EVENT_1, EVENT_2, RIGHT_1, RIGHT_2, length=40_000)
+WINDOW = EventWindow("t1", (EVENT_1, EVENT_2))
+
+
+def pad(genes: int = 0, bp: int = 0, window: EventWindow = WINDOW) -> tuple[int, int]:
+    return padded_interval(window, PADDED_CONTIG, padding_genes=genes, padding_bp=bp)
+
+
+def test_no_padding_is_the_event_span() -> None:
+    assert pad() == (10_000, 14_000)
+
+
+@pytest.mark.parametrize(
+    ("genes", "interval"),
+    [(1, (4000, 21_000)), (2, (1000, 31_000)), (5, (1000, 31_000))],
+)
+def test_gene_padding_adds_whole_neighbouring_genes(genes: int, interval) -> None:
+    assert pad(genes=genes) == interval
+
+
+@pytest.mark.parametrize(
+    ("bp", "interval"),
+    [(500, (9500, 14_500)), (30_000, (0, 40_000))],
+)
+def test_bp_padding_is_clipped_to_the_contig(bp: int, interval) -> None:
+    assert pad(bp=bp) == interval
+
+
+def test_larger_extent_wins_on_each_side_when_both_are_given() -> None:
+    assert pad(genes=1, bp=8000) == (2000, 22_000)
+
+
+def test_gene_padding_never_shrinks_a_window_with_a_long_nested_event() -> None:
+    long_event, nested = gene(0, 9000), gene(500, 800)
+    contig = contig_of(long_event, nested, gene(9500, 9800), length=10_000)
+    window = EventWindow("t1", (long_event, nested))
+    assert padded_interval(window, contig, padding_genes=1, padding_bp=0) == (0, 9800)
+    assert padded_interval(window, contig, padding_genes=0, padding_bp=0) == (0, 9000)
+
+
+def test_gene_padding_counts_from_the_last_event() -> None:
+    window = EventWindow("t1", (LEFT_1, EVENT_1, EVENT_2))
+    assert pad(genes=1, window=window) == (1000, 21_000)
+
+
+def test_window_events_must_be_genes_of_the_contig() -> None:
+    other = EventWindow("t1", (gene(50_000, 51_000),))
+    with pytest.raises(ValueError, match=r"event t1\|50001-51000\|\+ is not a gene of contig t1"):
+        pad(window=other)
+
+
+def test_window_must_be_on_the_same_contig() -> None:
+    other = EventWindow("t2", (gene(10_000, 11_000, contig_id="t2"),))
+    with pytest.raises(ValueError, match="window is on contig t2, not t1"):
+        pad(window=other)

@@ -129,3 +129,26 @@ def _span(events: tuple[Gene, ...]) -> int:
 def _maximal(groups: list[tuple[Gene, ...]]) -> list[tuple[Gene, ...]]:
     unique = list({frozenset(g.id for g in group): group for group in groups}.items())
     return [group for ids, group in unique if not any(ids < other for other, _ in unique)]
+
+
+def padded_interval(
+    window: EventWindow, contig: Contig, *, padding_genes: int, padding_bp: int
+) -> tuple[int, int]:
+    """Displayed interval of a window: the event span widened by padding (spec 10).
+
+    ``padding_genes`` adds whole genes from the contig's sorted gene list on
+    each side of the outermost events; ``padding_bp`` adds base pairs. When
+    both are given, the wider extent wins on each side. The result is clipped
+    to the contig. Padding never changes which events form the window.
+    """
+    if window.contig_id != contig.id:
+        raise ValueError(f"window is on contig {window.contig_id}, not {contig.id}")
+    position = {gene.id: index for index, gene in enumerate(contig.genes)}
+    for event in window.events:
+        if event.id not in position:
+            raise ValueError(f"event {event.id} is not a gene of contig {contig.id}")
+    first, last = position[window.events[0].id], position[window.events[-1].id]
+    around = contig.genes[max(first - padding_genes, 0) : last + 1 + padding_genes]
+    start = min(window.start - padding_bp, *(gene.start for gene in around))
+    end = max(window.end + padding_bp, *(gene.end for gene in around))
+    return max(start, 0), min(end, contig.length)
