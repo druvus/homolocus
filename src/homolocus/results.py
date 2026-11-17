@@ -171,13 +171,18 @@ def _summary_row(rank: int, cluster: Cluster) -> Row:
         "n_target_genes": len(cluster.evidence_genes),
         "n_matched_genes": len(cluster.event_ids),
         "n_missing_families": len(cluster.missing_families),
-        "flags": _flags(
-            split=cluster.potential_split,
-            fusion=cluster.potential_fusion,
-            partial=cluster.contains_partial_genes,
-            edge=cluster.touches_contig_edge,
-        ),
+        "flags": candidate_flags(cluster),
     }
+
+
+def candidate_flags(cluster: Cluster) -> str:
+    """Set candidate flags joined with ``;``: split, fusion, partial, edge (spec 14)."""
+    return _flags(
+        split=cluster.potential_split,
+        fusion=cluster.potential_fusion,
+        partial=cluster.contains_partial_genes,
+        edge=cluster.touches_contig_edge,
+    )
 
 
 def _gene_columns(cluster: Cluster, gene: Gene) -> Row:

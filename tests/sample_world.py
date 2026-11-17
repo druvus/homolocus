@@ -68,12 +68,14 @@ def results(**overrides) -> RegionResults:
     """The sample results; any field can be overridden."""
     search, grouping, detection, scoring = SETTINGS
     context = DetectionContext(REFERENCE, FAMILIES, search, detection, scoring)
+    matches = overrides.get("matches", MATCHES)
+    genome = overrides.get("genome", GENOME)
     fields = {
         "reference": REFERENCE,
-        "genome": GENOME,
+        "genome": genome,
         "families": FAMILIES,
-        "matches": MATCHES,
-        "candidates": detect(context, GENOME, MATCHES),
+        "matches": matches,
+        "candidates": detect(context, genome, matches),
         "search": search,
         "family_grouping": grouping,
         "detection": detection,
