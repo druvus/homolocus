@@ -361,6 +361,10 @@ Aggregation:
 5. Sum of bit scores.
 6. Pair-level thresholds (e-value, identity) are evaluated on the aggregated evidence. No coverage threshold is applied at pair level **[DECIDED]**.
 
+- **[DECIDED]** The e-value of a pair is the smallest e-value of its HSPs. A pair passes when its best HSP is significant; weaker HSPs of the same pair are kept and count toward coverage.
+- **[PROPOSED]** Threshold comparisons are inclusive: `evalue <= evalue threshold` and `identity >= min_identity`.
+- Coverage, identity, bit score and e-value are derived from `alignments` rather than stored separately, so they cannot disagree with the HSPs.
+
 ### 5.8 Cluster
 
 One candidate genomic region on one target contig.
@@ -810,6 +814,7 @@ homolocus/
 │   ├── finder.py
 │   ├── config.py                  # DiamondSearch, RegionDetection, FamilyGrouping, ScoringWeights
 │   ├── coordinates.py             # 0-based half-open <-> 1-based inclusive
+│   ├── intervals.py               # interval unions for coverage (5.7, 7.7)
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── gene.py
@@ -904,6 +909,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 12. Idempotent, deterministic output writing, section 14.
 13. Invalid supplied `/translation` definition and one summary warning per contig, 3.2.
 14. Pyrodigal meta mode restricted to table-11 models, and training only when a contig is at least 20 kb, 2.2.
+15. Inclusive pair-level threshold comparisons, 5.7.
 
 **Still open:**
 
