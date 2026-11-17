@@ -823,6 +823,7 @@ homolocus = "homolocus.cli:main"
 - Mandatory: Biopython, pandas, Matplotlib, Pyrodigal.
 - DIAMOND is an external executable checked at runtime.
 - Tests needing DIAMOND are marked `@pytest.mark.diamond` and skipped with a clear message when it is absent.
+- **[DECIDED]** Continuous integration (GitHub Actions, `.github/workflows/tests.yml`) runs `ruff check`, `ruff format --check`, `mypy src` and the full test suite on Python 3.10–3.13 for every pull request and push to `main`. It installs DIAMOND 2.2.9 from the official release, pinned by SHA-256. It sets `HOMOLOCUS_REQUIRE_DIAMOND=1`, which makes a missing DIAMOND a test failure instead of a skip.
 - Version pinning of runtime dependencies and platform notes are decided during implementation.
 - mypy runs in strict mode. Missing type information is ignored only for Biopython, which ships none. pandas is typed through `pandas-stubs`.
 - The quality-gate tools of section 17 ([crapper](https://github.com/unclebob/crapper), [dryer](https://github.com/unclebob/dryer), [mutator](https://github.com/unclebob/mutator)) are external, optional development tools checked out next to the repository. They are not Python dependencies of the package. Their output (`.metrics/`, `target/`) is not committed.
