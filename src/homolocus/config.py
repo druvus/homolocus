@@ -86,6 +86,9 @@ _DETECTION_FRACTIONS = (
     "min_reference_gene_coverage",
     "min_event_coverage",
     "max_candidate_overlap",
+    "min_split_contribution",
+    "max_fragment_overlap",
+    "min_fusion_part_coverage",
 )
 _DETECTION_NON_NEGATIVE = (
     "max_intervening_genes",
@@ -100,9 +103,10 @@ _DETECTION_NON_NEGATIVE = (
 class RegionDetection:
     """Candidate generation and detection thresholds (spec 7.5, 10).
 
-    Coverages and ``max_candidate_overlap`` are fractions. ``min_matches``
-    counts distinct represented families and must be at least 2. Distances
-    are in base pairs or genes; ``max_region_bp`` applies to the unpadded span.
+    Coverages, ``max_candidate_overlap`` and the split and fusion settings
+    (spec 9.4) are fractions. ``min_matches`` counts distinct represented
+    families and must be at least 2. Distances are in base pairs or genes;
+    ``max_region_bp`` applies to the unpadded span.
     """
 
     min_matches: int = 3
@@ -116,6 +120,9 @@ class RegionDetection:
     padding_genes: int = 0
     padding_bp: int = 0
     edge_margin_bp: int = 500
+    min_split_contribution: float = 0.2
+    max_fragment_overlap: float = 0.2
+    min_fusion_part_coverage: float = 0.2
 
     def __post_init__(self) -> None:
         if self.min_matches < 2:
