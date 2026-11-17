@@ -10,6 +10,7 @@ from homolocus.models.gene_match import GeneMatch
 from homolocus.models.genome import Genome
 from homolocus.models.reference import ReferenceRegion
 from homolocus.models.skipped_feature import SkippedFeature, SkipReason
+from homolocus.results import RegionResults
 
 __all__ = [
     "Alignment",
@@ -25,6 +26,7 @@ __all__ = [
     "ReferenceFamilies",
     "ReferenceRegion",
     "RegionDetection",
+    "RegionResults",
     "ScoreComponents",
     "ScoringWeights",
     "SkipReason",
