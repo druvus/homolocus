@@ -1,8 +1,9 @@
 """Write a run's output directory (spec 14). The I/O layer for results.
 
 Every file is deterministic: identical results give byte-identical files.
-Managed files are summary.tsv, candidates/candidate_*.tsv, alignments/* and
-analysis.json; stale candidate files are removed, other files are left alone.
+Managed files are summary.tsv, candidates/candidate_*.tsv, alignments/*,
+analysis.json and plots/ (regions.png, candidate_*.png); stale candidate files
+are removed, other files are left alone.
 """
 
 import json
@@ -10,7 +11,7 @@ from collections.abc import Iterable
 from dataclasses import asdict
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -18,16 +19,23 @@ from homolocus.coordinates import to_one_based
 from homolocus.models.gene import Gene
 from homolocus.models.skipped_feature import SkippedFeature
 from homolocus.results import GENE_COLUMNS, RegionResults
+from homolocus.visualization.region_plot import candidate_figure, overview_figure
+
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
 
 FLOAT_FORMAT = "%.6g"
 """Floats in TSV files are written with 6 significant digits."""
 
+PLOT_DPI = 150
+"""Resolution of the PNG plots (spec 11.4)."""
+
 
 def write_results(results: RegionResults, output_dir: str | Path) -> None:
-    """Write summary, candidate tables, raw alignments and run metadata."""
+    """Write summary, candidate tables, raw alignments, run metadata and plots."""
     root = Path(output_dir)
-    candidates, alignments = root / "candidates", root / "alignments"
-    for directory in (candidates, alignments):
+    candidates, alignments, plots = root / "candidates", root / "alignments", root / "plots"
+    for directory in (candidates, alignments, plots):
         directory.mkdir(parents=True, exist_ok=True)
     _write_tsv(results.to_dataframe(), root / "summary.tsv")
     _write_candidates(results, candidates)
@@ -36,6 +44,7 @@ def write_results(results: RegionResults, output_dir: str | Path) -> None:
     results.protein_index.write_mapping(alignments / "protein_ids.tsv")
     metadata = json.dumps(analysis(results), indent=2, sort_keys=True)
     (root / "analysis.json").write_text(metadata + "\n", encoding="utf-8")
+    _write_plots(results, plots)
 
 
 def _write_candidates(results: RegionResults, directory: Path) -> None:
@@ -44,7 +53,26 @@ def _write_candidates(results: RegionResults, directory: Path) -> None:
         path = directory / f"{results.candidate_id(rank)}.tsv"
         _write_tsv(pd.DataFrame(results.gene_rows(cluster), columns=list(GENE_COLUMNS)), path)
         written.add(path.name)
-    for stale in directory.glob("candidate_*.tsv"):
+    _remove_stale(directory, "candidate_*.tsv", written)
+
+
+def _write_plots(results: RegionResults, directory: Path) -> None:
+    _save_png(overview_figure(results), directory / "regions.png")
+    written = set()
+    for rank in range(1, len(results.candidates) + 1):
+        path = directory / f"{results.candidate_id(rank)}.png"
+        _save_png(candidate_figure(results, rank), path)
+        written.add(path.name)
+    _remove_stale(directory, "candidate_*.png", written)
+
+
+def _save_png(figure: "Figure", path: Path) -> None:
+    """PNG without the Software stamp, so identical results give identical bytes."""
+    figure.savefig(path, format="png", dpi=PLOT_DPI, metadata={"Software": None})
+
+
+def _remove_stale(directory: Path, pattern: str, written: set[str]) -> None:
+    for stale in directory.glob(pattern):
         if stale.name not in written:
             stale.unlink()
 

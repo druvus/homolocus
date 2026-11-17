@@ -5,86 +5,9 @@ from dataclasses import replace
 import pandas as pd
 import pytest
 
-from homolocus import (
-    Alignment,
-    Contig,
-    DiamondSearch,
-    FamilyGrouping,
-    Gene,
-    GeneFamily,
-    GeneMatch,
-    Genome,
-    ReferenceFamilies,
-    ReferenceRegion,
-    RegionDetection,
-    RegionResults,
-    ScoringWeights,
-)
-from homolocus.detection.evaluation import DetectionContext, detect
+from homolocus import Gene, Genome, RegionResults
 from homolocus.models.cluster import FusionEvent, SplitEvent
-from homolocus.search.protein_index import ProteinIndex
-
-PROTEIN = 300
-REF_GENES = tuple(
-    Gene("ref", n * 1200, n * 1200 + 900, 1, "A" * 900, "M" * PROTEIN) for n in range(4)
-)
-REFERENCE = ReferenceRegion("ref", 0, 4500, "A" * 4500, REF_GENES)
-FAMILIES = ReferenceFamilies(
-    tuple(GeneFamily(f"F{n + 1:03d}", (g.id,)) for n, g in enumerate(REF_GENES))
-)
-
-
-def target(start: int, strand: int = 1, **metadata) -> Gene:
-    return Gene("t1", start, start + 900, strand, "A" * 900, "M" * 300, **metadata)
-
-
-def match(ref: Gene, tgt: Gene, *, query=(0, PROTEIN), identity=80.0, bits=300.0) -> GeneMatch:
-    span = query[1] - query[0]
-    hsp = Alignment(ref.id, tgt.id, identity, span, *query, 0, span, PROTEIN, PROTEIN, 1e-40, bits)
-    return GeneMatch(ref.id, tgt.id, (hsp,))
-
-
-A = target(10_000, locus_tag="tA", product="alpha")
-B = target(11_200)
-INSERT = target(12_400, strand=-1, product="insertion")
-C = target(13_600)
-FAR_A, FAR_B = target(100_000), target(101_200)
-MATCHES = (
-    match(REF_GENES[0], A),
-    match(REF_GENES[1], B),
-    match(REF_GENES[3], B, query=(0, 60), identity=50.0, bits=40.0),
-    match(REF_GENES[2], C),
-    match(REF_GENES[0], FAR_A),
-    match(REF_GENES[1], FAR_B),
-)
-GENOME = Genome(
-    contigs={"t1": Contig("t1", "A" * 200_000, (A, B, INSERT, C, FAR_A, FAR_B))},
-    name="target",
-    source="target.fna",
-)
-SETTINGS = (DiamondSearch(), FamilyGrouping(), RegionDetection(min_matches=2), ScoringWeights())
-
-
-def results(**overrides) -> RegionResults:
-    search, grouping, detection, scoring = SETTINGS
-    context = DetectionContext(REFERENCE, FAMILIES, search, detection, scoring)
-    fields = {
-        "reference": REFERENCE,
-        "genome": GENOME,
-        "families": FAMILIES,
-        "matches": MATCHES,
-        "candidates": detect(context, GENOME, MATCHES),
-        "search": search,
-        "family_grouping": grouping,
-        "detection": detection,
-        "scoring": scoring,
-        "diamond_version": "2.2.9",
-        "raw_main": "r000001\tt000001\n",
-        "raw_self": "",
-        "protein_index": ProteinIndex.build(REF_GENES, GENOME.genes()),
-    }
-    fields.update(overrides)
-    return RegionResults(**fields)
+from sample_world import FAR_A, FAR_B, GENOME, INSERT, REF_GENES, REFERENCE, A, B, C, results
 
 
 def test_candidates_are_ranked_and_the_best_is_first() -> None:
@@ -272,8 +195,20 @@ def test_write_creates_the_whole_tree(tmp_path) -> None:
         "analysis.json",
         "candidates/candidate_001.tsv",
         "candidates/candidate_002.tsv",
+        "plots/candidate_001.png",
+        "plots/candidate_002.png",
+        "plots/regions.png",
         "summary.tsv",
     ]
+
+
+def test_plots_are_png_at_150_dpi(tmp_path) -> None:
+    results().write(tmp_path)
+    for name in ("regions.png", "candidate_001.png"):
+        data = (tmp_path / "plots" / name).read_bytes()
+        assert data.startswith(b"\x89PNG\r\n\x1a\n")
+        assert int.from_bytes(data[16:20], "big") == 11 * 150  # width: 11 in at 150 dpi
+        assert b"Software" not in data
 
 
 def test_raw_diamond_tables_are_written_byte_for_byte(tmp_path) -> None:
@@ -326,10 +261,15 @@ def test_stale_candidate_files_are_removed_and_foreign_files_kept(tmp_path) -> N
     (tmp_path / "candidates").mkdir()
     (tmp_path / "candidates" / "candidate_009.tsv").write_text("old")
     (tmp_path / "candidates" / "notes.txt").write_text("mine")
+    (tmp_path / "plots").mkdir()
+    (tmp_path / "plots" / "candidate_009.png").write_text("old")
+    (tmp_path / "plots" / "notes.png").write_text("mine")
     (tmp_path / "README").write_text("mine too")
     results().write(tmp_path)
     assert not (tmp_path / "candidates" / "candidate_009.tsv").exists()
     assert (tmp_path / "candidates" / "notes.txt").read_text() == "mine"
+    assert not (tmp_path / "plots" / "candidate_009.png").exists()
+    assert (tmp_path / "plots" / "notes.png").read_text() == "mine"
     assert (tmp_path / "README").read_text() == "mine too"
 
 
@@ -337,6 +277,7 @@ def test_no_candidates_still_writes_headers(tmp_path) -> None:
     results(candidates=()).write(tmp_path)
     assert (tmp_path / "summary.tsv").read_text().startswith("rank\tcandidate_id\t")
     assert list((tmp_path / "candidates").iterdir()) == []
+    assert [p.name for p in (tmp_path / "plots").iterdir()] == ["regions.png"]
 
 
 def analysis(tmp_path, **overrides) -> dict:
