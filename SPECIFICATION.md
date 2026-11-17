@@ -718,6 +718,7 @@ results/
 - `analysis.json` holds run metadata only: parameters, tool versions, thresholds, warnings, skipped features (pseudogenes, compound CDS, untranslatable genes), `reference_genes_without_protein`, and the reference families. It is **not** a reloadable results object.
 - **[PROPOSED]** `summary.tsv` columns: `rank, candidate_id, contig, start, end, span_bp, score, content, similarity, order, orientation, spacing, reference_coverage, mean_protein_coverage, n_target_genes, n_matched_genes, n_missing_families, flags`.
 - **[PROPOSED]** Candidate TSV columns: `target_gene_id, locus_tag, product, start, end, strand, role (matched|additional), reference_gene_id, family_id, identity, query_coverage, subject_coverage, bit_score, is_best_copy, flags`.
+- **[PROPOSED]** Writing results is idempotent. Re-running into an existing output directory overwrites the files the package manages and leaves other files untouched. Identical input and parameters give identical output files: rows and candidates are ordered deterministically, and no output file carries a timestamp except the run metadata in `analysis.json`.
 
 ────────
 
@@ -736,7 +737,7 @@ requires-python = ">=3.10"
 dependencies = ["biopython", "pandas", "matplotlib", "pyrodigal"]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "hypothesis", "ruff", "mypy"]
+dev = ["pytest", "pytest-cov", "hypothesis", "ruff", "mypy", "pandas-stubs"]
 
 [project.scripts]
 homolocus = "homolocus.cli:main"
@@ -747,6 +748,8 @@ homolocus = "homolocus.cli:main"
 - DIAMOND is an external executable checked at runtime.
 - Tests needing DIAMOND are marked `@pytest.mark.diamond` and skipped with a clear message when it is absent.
 - Version pinning of runtime dependencies and platform notes are decided during implementation.
+- mypy runs in strict mode. Missing type information is ignored only for Biopython, which ships none. pandas is typed through `pandas-stubs`.
+- The quality-gate tools of section 17 ([crapper](https://github.com/unclebob/crapper), [dryer](https://github.com/unclebob/dryer), [mutator](https://github.com/unclebob/mutator)) are external, optional development tools checked out next to the repository. They are not Python dependencies of the package. Their output (`.metrics/`, `target/`) is not committed.
 
 ────────
 
@@ -824,6 +827,16 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 
 **Visualization:** multiple candidate lines, consistent family colours, arrows and strand, missing and additional genes distinguishable.
 
+**Test behaviour, not implementation.** Tests call the public API and module functions the way their user does and check the result that user would see. A test that would still pass if every function returned nothing is removed. Write the failing test before the code it covers.
+
+**Property-based tests.** Use `hypothesis` for invariants such as coordinate round-trips (1-based inclusive ↔ 0-based half-open) and interval unions (coverage never double counts and never exceeds 1).
+
+**Quality gates.** Run on `src/` before a change is considered done:
+
+- Every function has a CRAP score below 10 (`crapper`). Reduce it by splitting the function, testing it, or both. Ruff's complexity limit of 9 is an early static guard for the same rule.
+- No pair of functions has a duplication score of 0.8 or above (`dryer`).
+- No surviving mutants in changed code (`mutator`): cover the uncovered, kill the survivors, delete dead code.
+
 ────────
 
 ## 18. Open questions and proposed defaults awaiting confirmation
@@ -843,12 +856,14 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 9. Output columns, section 14, and `to_dataframe()` granularity, section 12.
 10. Pyrodigal training strategy for assemblies of 20 kb or more, 2.2.
 11. `edge_margin_bp` default of 500, section 10.
+12. Idempotent, deterministic output writing, section 14.
 
 **Still open:**
 
 - Split and fusion thresholds (9.4 values are untested starting points).
 - Distinguishing true fusions from shared domains beyond the family rule.
 - Weights and component definitions need validation on real data (v0.1 ships them as unvalidated defaults).
+- Role of a target gene inside a candidate that has only weak matches below the event threshold (7.2): `matched` or `additional` in the candidate TSV (14). Proposed: `additional`, with its weak GeneMatch evidence still listed.
 
 Do not silently resolve these during implementation. Record the chosen default and ask when behaviour is materially affected.
 
@@ -869,5 +884,49 @@ Do not silently resolve these during implementation. Record the chosen default a
 - Keep the Python API primary. The CLI is a wrapper.
 - Add tests alongside each component.
 - Do not implement features excluded from v0.1.
+- Parse and validate outside data once, where it enters (GenBank, FASTA, DIAMOND output, CLI arguments). Inside the package, trust it.
+- Model the domain so illegal states cannot be built: strand is +1 or −1, `start < end`, coverage lies in `[0, 1]`, identity in `[0, 100]`. Enforce this when objects are constructed.
+- Never silence the type checker (no blanket `# type: ignore`, no `cast` to hide an error).
+- Make operations idempotent (section 14).
+- Use the terms of section 20 in code, tests and documentation.
+
+────────
+
+## 20. Glossary
+
+Short definitions. The rules live in the referenced sections.
+
+| Term | Meaning |
+|------|---------|
+| Reference region | The interval on one reference contig whose proteins define what is searched for (2.1, 5.4). |
+| Target genome | The single assembly searched for the region. It has one or more contigs (2.2, 5.3). |
+| Contig | One sequence of an assembly, treated as linear and analysed independently (2.3, 5.2). |
+| Gene | A protein-coding CDS. No other feature types are modelled in v0.1 (3.1, 5.1). |
+| Canonical gene ID | `{contig_id}\|{start_1based}-{end_1based}\|{strand_char}`, the only key for genes (4.1). |
+| Partial gene | A gene truncated at a contig edge or marked partial. Kept and flagged (2.2). |
+| Pseudogene | A CDS annotated as a pseudogene or with an internal stop. Excluded entirely (3.1, 3.2). |
+| Untranslatable gene | A gene whose protein could not be obtained. Kept but not searchable (3.2, 8.1). |
+| HSP / Alignment | One DIAMOND high-scoring segment pair between a reference and a target protein (5.6). |
+| GeneMatch | All HSPs between one reference protein and one target protein, aggregated (5.7). |
+| Pair-level thresholds | E-value and identity filters applied to a GeneMatch. No coverage filter at this level (5.7, 6.2). |
+| Gene family | Reference genes grouped as paralogs by the self-search. Counted once in coverage and scoring (5.5, 7.6). |
+| Matching event | A target gene with a GeneMatch that passes pair-level thresholds and the event coverage rule (7.2). |
+| Intervening genes | Genes between two consecutive matching events in the contig's sorted gene list (7.3). |
+| Chain | Matching events linked by single linkage under the distance limits (7.3). |
+| Window | A part of a chain longer than `max_region_bp`, anchored on one event (7.3). |
+| Span | Distance from the start of the first matching event to the end of the last, without padding (7.3, 10). |
+| Candidate | One evaluated chain or window on one contig. The model is `Cluster` (5.8, 7.3). |
+| Matched gene | A target gene in a candidate that is a matching event (5.8). Whether a gene with only weak, sub-event matches counts as matched is open (18). |
+| Additional gene | A target gene in a candidate that is not matched (5.8, 8.2). |
+| Reference-gene coverage | Union of aligned reference positions across a candidate's target genes, as a fraction of the reference protein (7.7). |
+| Represented family | A family whose best member reaches `min_reference_gene_coverage` in a candidate (7.7). |
+| Missing family | A family that is not represented in a candidate (8.2). |
+| Reference coverage | Represented families divided by families with at least one searchable gene (8.1). |
+| Duplicated homologue | One of several target copies matching the same family. Each copy is its own matching event (7.4, 9.1). |
+| Best copy | The copy of a family in a candidate with the highest bit score. Used for order and orientation (7.4). |
+| Potential split | Several target proteins covering complementary parts of one reference protein. Flagged only (9.2, 9.4). |
+| Potential fusion | One target protein covering parts of reference proteins from different families. Flagged only (9.3, 9.4). |
+| Padding | Genes or base pairs added around a candidate for display, after the span check (10). |
+| Contig edge | A candidate touches it when its first or last matched gene is partial or within `edge_margin_bp` of a contig end (10). |
 
 End of v0.1 working specification (revision 2)
