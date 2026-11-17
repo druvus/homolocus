@@ -4,6 +4,7 @@ from homolocus.config import DiamondSearch, FamilyGrouping
 from homolocus.models.alignment import Alignment
 from homolocus.models.contig import Contig
 from homolocus.models.gene import Gene, Strand
+from homolocus.models.gene_family import GeneFamily, ReferenceFamilies
 from homolocus.models.gene_match import GeneMatch
 from homolocus.models.genome import Genome
 from homolocus.models.reference import ReferenceRegion
@@ -15,8 +16,10 @@ __all__ = [
     "DiamondSearch",
     "FamilyGrouping",
     "Gene",
+    "GeneFamily",
     "GeneMatch",
     "Genome",
+    "ReferenceFamilies",
     "ReferenceRegion",
     "SkipReason",
     "SkippedFeature",
