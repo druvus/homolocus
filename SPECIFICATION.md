@@ -1,10 +1,10 @@
 # homolocus — v0.1 Specification
 
-Status: Working specification (revision 2)
-Package name: `homolocus`
-Python: 3.10+
-Build backend: Hatchling
-Primary use case: Identify and visualize a homologous genomic region in a bacterial genome using the proteins encoded by a reference region.
+- Status: Working specification (revision 2)
+- Package name: `homolocus`
+- Python: 3.10+
+- Build backend: Hatchling
+- Primary use case: Identify and visualize a homologous genomic region in a bacterial genome using the proteins encoded by a reference region.
 
 ## 0. Decision status and conventions
 
@@ -397,7 +397,7 @@ search = DiamondSearch(
 
 ### 6.4 DIAMOND tabular fields [PROPOSED]
 
-```
+```text
 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen
 ```
 
@@ -428,7 +428,7 @@ No predefined flanking genes. Each contig is processed independently.
 
 A target gene is a matching event if it has at least one `GeneMatch` passing pair-level thresholds **and** that match satisfies:
 
-```
+```text
 query_coverage >= min_event_coverage   OR   subject_coverage >= min_event_coverage
 ```
 
@@ -462,7 +462,7 @@ Linked events form a chain (single linkage). Each duplicated copy is its own eve
 
 Each copy is a separate matching event for distance calculations. Reconstruction and scoring retain all copies. For order and orientation scoring, a family uses its best copy in the candidate (highest bit score). Which copy that is must be recorded.
 
-```
+```text
 Reference: A - B - C - D
 Target:    A - B1 - X - B2 - C - D   (B1 and B2 both retained; X counted as intervening)
 ```
@@ -528,7 +528,7 @@ Return all candidates passing thresholds, ranked by composite score (ties: highe
 
 Composite score in `[0, 1]`:
 
-```
+```text
 score = w_content*content + w_similarity*similarity + w_order*order
       + w_orientation*orientation + w_spacing*spacing
 ```
@@ -594,7 +594,7 @@ Detect and flag only. A potential split: multiple target proteins align to compl
 - Count that union toward 7.7 coverage.
 - Preserve individual target proteins and alignments.
 
-```
+```text
 Reference protein B:  |------------------------|
 Target protein B1:    |----------|
 Target protein B2:               |-------------|
@@ -682,13 +682,13 @@ The API exposes intermediate models (alignments, matches, families, candidates, 
 
 A thin wrapper over the Python API with no duplicated logic.
 
-```
+```bash
 homolocus find \
     --reference ecoli.gb --contig NC_000913.3 --start 1900000 --end 1920000 \
     --genome target.fna --output results/
 ```
 
-```
+```bash
 homolocus find --reference ecoli_pai.gbk --genome target.gbk --output results/
 ```
 
@@ -698,7 +698,7 @@ homolocus find --reference ecoli_pai.gbk --genome target.gbk --output results/
 
 ## 14. Outputs
 
-```
+```text
 results/
 ├── summary.tsv
 ├── candidates/
@@ -742,19 +742,21 @@ dev = ["pytest", "pytest-cov", "hypothesis", "ruff", "mypy"]
 homolocus = "homolocus.cli:main"
 ```
 
+- The block above is an excerpt. `pyproject.toml` is authoritative and also sets the readme, the MIT license (`license`, `license-files`), the wheel package path and the ruff, mypy, pytest and coverage configuration. `hatchling>=1.27` is required for the `license-files` metadata.
 - Mandatory: Biopython, pandas, Matplotlib, Pyrodigal.
 - DIAMOND is an external executable checked at runtime.
-- Tests needing DIAMOND are marked and skipped with a clear message when it is absent.
-- Version pinning and platform notes are decided during implementation.
+- Tests needing DIAMOND are marked `@pytest.mark.diamond` and skipped with a clear message when it is absent.
+- Version pinning of runtime dependencies and platform notes are decided during implementation.
 
 ────────
 
 ## 16. Package structure
 
-```
+```text
 homolocus/
 ├── pyproject.toml
 ├── README.md
+├── LICENSE
 ├── SPECIFICATION.md
 ├── CLAUDE.md
 ├── src/homolocus/
@@ -764,6 +766,7 @@ homolocus/
 │   ├── config.py                  # DiamondSearch, RegionDetection, FamilyGrouping, ScoringWeights
 │   ├── coordinates.py             # 0-based half-open <-> 1-based inclusive
 │   ├── models/
+│   │   ├── __init__.py
 │   │   ├── gene.py
 │   │   ├── contig.py
 │   │   ├── genome.py
@@ -773,17 +776,21 @@ homolocus/
 │   │   ├── gene_match.py
 │   │   └── cluster.py
 │   ├── annotation/
+│   │   ├── __init__.py
 │   │   ├── genbank.py
 │   │   └── prodigal.py
 │   ├── search/
+│   │   ├── __init__.py
 │   │   └── diamond.py
 │   ├── detection/
+│   │   ├── __init__.py
 │   │   ├── families.py
 │   │   ├── matching.py
 │   │   ├── candidate_generation.py
 │   │   ├── scoring.py
 │   │   └── flags.py               # split / fusion / edge flags
 │   └── visualization/
+│       ├── __init__.py
 │       └── region_plot.py
 └── tests/
     ├── test_models/

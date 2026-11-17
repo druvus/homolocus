@@ -24,7 +24,7 @@ The package lives in `src/homolocus/`. Open source, MIT licensed.
 
 ## Conventions
 
-- Internal coordinates are 0-based half-open. User-facing coordinates (CLI, TSV, plots) are 1-based inclusive. Convert only in `coordinates.py` and the I/O layer. Use the `coordinate-conventions` skill.
+- Internal coordinates are 0-based half-open. User-facing coordinates (CLI, TSV, plots) are 1-based inclusive. Convert only in `coordinates.py` and the I/O layer.
 - Gene ID format: `{contig_id}|{start_1based}-{end_1based}|{+|-}`. Never key on `locus_tag`.
 - Detection, matching and scoring code is pure: no file I/O, no subprocess, no plotting. DIAMOND is isolated in `search/diamond.py`. Plotting only consumes result models.
 - Keep raw evidence: individual HSPs are never discarded when aggregated.
