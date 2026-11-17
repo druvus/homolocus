@@ -14,10 +14,11 @@ from dataclasses import dataclass
 from typing import Any, Literal, get_args, get_origin, get_type_hints
 
 from homolocus.config import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
+from homolocus.coordinates import to_one_based
 from homolocus.finder import RegionFinder
 from homolocus.models.genome import Genome
 from homolocus.models.reference import ReferenceRegion
-from homolocus.results import RegionResults
+from homolocus.results import RegionResults, candidate_flags
 from homolocus.search.diamond import DiamondError
 
 OPTION_HELP = {
@@ -86,11 +87,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ValueError as error:
         parser.error(str(error))
     try:
-        _find(args, settings)
+        results = _find(args, settings)
     except (OSError, ValueError, DiamondError) as error:
         sys.stderr.write(f"homolocus: error: {error}\n")
         return 1
+    sys.stdout.write("".join(f"{line}\n" for line in summary_lines(results, args.output)))
     return 0
+
+
+def summary_lines(results: RegionResults, output_dir: str) -> list[str]:
+    """Terminal summary: one line per candidate, or ``no candidates``, then the output."""
+    lines = [_candidate_line(results, rank) for rank in range(1, len(results.candidates) + 1)]
+    return [*(lines or ["no candidates"]), f"results written to {output_dir}"]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -115,6 +123,19 @@ def finder_settings(args: argparse.Namespace) -> FinderSettings:
         detection=RegionDetection(**_given(args, RegionDetection, "")),
         scoring=ScoringWeights(**_given(args, ScoringWeights, "weight_")),
     )
+
+
+def _candidate_line(results: RegionResults, rank: int) -> str:
+    cluster = results.candidates[rank - 1]
+    start, end = to_one_based(cluster.start, cluster.end)
+    parts = [
+        f"#{rank} {results.candidate_id(rank)}",
+        f"{cluster.contig_id}:{start}-{end}",
+        f"score {cluster.score:.3f}",
+        f"coverage {cluster.reference_coverage:.2f}",
+        candidate_flags(cluster),
+    ]
+    return "  ".join(part for part in parts if part)
 
 
 def _find(args: argparse.Namespace, settings: FinderSettings) -> RegionResults:

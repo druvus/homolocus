@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 from Bio import SeqIO
+from Bio.Seq import Seq
 from Bio.SeqFeature import FeatureLocation, SeqFeature
+from Bio.SeqRecord import SeqRecord
 
 from homolocus import (
     DiamondSearch,
@@ -129,16 +131,20 @@ def test_top_level_help_describes_the_tool(capsys) -> None:
     assert "homolocus find" in capsys.readouterr().out
 
 
-def genbank(path, record_id, dna, make_record, n_genes=3):
-    """A record of ``n_genes`` forward ORFs separated by 60 random bases."""
-    parts, features, position = [], [], 60
-    parts.append(dna.random(60))
-    for _ in range(n_genes):
-        orf = dna.orf(150)
+def planted(dna, orfs):
+    """Sequence of ``orfs`` separated by 60 random bases, and their CDS features."""
+    parts, features, position = [dna.random(60)], [], 60
+    for orf in orfs:
         features.append(SeqFeature(FeatureLocation(position, position + len(orf), 1), type="CDS"))
         parts += [orf, dna.random(60)]
         position += len(orf) + 60
-    SeqIO.write([make_record(record_id, "".join(parts), features)], path, "genbank")
+    return "".join(parts), features
+
+
+def genbank(path, record_id, dna, make_record, orfs=None):
+    """A GenBank record of planted ORFs (three random ones by default)."""
+    sequence, features = planted(dna, orfs or [dna.orf(150) for _ in range(3)])
+    SeqIO.write([make_record(record_id, sequence, features)], path, "genbank")
     return path
 
 
@@ -221,3 +227,55 @@ def test_missing_diamond_fails_with_a_one_line_error(inputs, monkeypatch, capsys
     err = capsys.readouterr().err
     assert err.startswith("homolocus: error: ")
     assert "DIAMOND" in err
+
+
+def test_find_prints_one_line_per_candidate_then_the_output(inputs, finder_calls, capsys) -> None:
+    assert main(inputs) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "#1 candidate_001  t1:10001-14500  score 0.827  coverage 0.75",
+        "#2 candidate_002  t1:100001-102100  score 0.740  coverage 0.50",
+        f"results written to {inputs[-1]}",
+    ]
+
+
+def test_candidate_flags_end_their_line(inputs, monkeypatch, capsys) -> None:
+    found = sample_results()
+    flagged = dataclasses.replace(found.candidates[0], touches_contig_edge=True)
+    flagged_results = dataclasses.replace(found, candidates=(flagged,))
+    monkeypatch.setattr(RegionFinder, "find", lambda finder, genome: flagged_results)
+    assert main(inputs) == 0
+    assert capsys.readouterr().out.splitlines()[0].endswith("coverage 0.75  edge")
+
+
+def test_no_candidates_is_said_plainly(inputs, monkeypatch, capsys) -> None:
+    empty = sample_results(candidates=())
+    monkeypatch.setattr(RegionFinder, "find", lambda finder, genome: empty)
+    assert main(inputs) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "no candidates",
+        f"results written to {inputs[-1]}",
+    ]
+
+
+def test_errors_print_nothing_on_stdout(inputs, tmp_path, capsys) -> None:
+    assert main([*inputs, "--reference", str(tmp_path / "missing.gbk")]) == 1
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.diamond
+def test_find_end_to_end_with_a_predicted_fasta_target(tmp_path, dna, make_record, capsys) -> None:
+    orfs = [dna.orf(150) for _ in range(3)]
+    reference = genbank(tmp_path / "ref.gbk", "ref", dna, make_record, orfs)
+    sequence, _ = planted(dna, orfs)
+    contig = dna.random(3000) + sequence + dna.random(3000)
+    target = tmp_path / "target.fna"
+    SeqIO.write([SeqRecord(Seq(contig), id="t1", description="")], target, "fasta")
+    output = tmp_path / "out"
+    argv = ["find", "--reference", str(reference), "--genome", str(target), "--output", str(output)]
+    assert main([*argv, "--threads", "1"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith("#1 candidate_001  t1:")
+    assert "coverage 1.00" in lines[0]
+    assert lines[-1] == f"results written to {output}"
+    for name in ("summary.tsv", "candidates/candidate_001.tsv", "plots/candidate_001.png"):
+        assert (output / name).is_file()
