@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from homolocus import DiamondSearch, FamilyGrouping, RegionDetection
+from homolocus import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
 
 
 def test_defaults_match_the_specification() -> None:
@@ -142,3 +142,30 @@ def test_region_detection_fractions_are_checked(field: str, value: float) -> Non
 def test_region_detection_counts_are_checked(field: str, value: int) -> None:
     with pytest.raises(ValueError, match=field):
         RegionDetection(**{field: value})
+
+
+def test_scoring_weight_defaults() -> None:
+    weights = ScoringWeights()
+    assert (weights.content, weights.similarity, weights.order) == (0.40, 0.30, 0.15)
+    assert (weights.orientation, weights.spacing) == (0.10, 0.05)
+
+
+def test_weights_are_normalised_to_sum_to_one() -> None:
+    normalized = ScoringWeights(
+        content=2, similarity=1, order=1, orientation=0, spacing=0
+    ).normalized()
+    assert normalized == ScoringWeights(
+        content=0.5, similarity=0.25, order=0.25, orientation=0.0, spacing=0.0
+    )
+    assert sum(vars(ScoringWeights().normalized()).values()) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("field", ["content", "similarity", "order", "orientation", "spacing"])
+def test_negative_weights_are_rejected(field: str) -> None:
+    with pytest.raises(ValueError, match=field):
+        ScoringWeights(**{field: -0.01})
+
+
+def test_all_zero_weights_are_rejected() -> None:
+    with pytest.raises(ValueError, match="at least one weight"):
+        ScoringWeights(content=0, similarity=0, order=0, orientation=0, spacing=0)

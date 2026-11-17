@@ -128,3 +128,36 @@ class RegionDetection:
         for name in _DETECTION_NON_NEGATIVE:
             if getattr(self, name) < 0:
                 raise ValueError(f"{name} {getattr(self, name)} must not be negative")
+
+
+_COMPONENTS = ("content", "similarity", "order", "orientation", "spacing")
+
+
+@dataclass(frozen=True)
+class ScoringWeights:
+    """Weights of the five score components (spec 8). Unvalidated starting values.
+
+    Weights must be non-negative with a positive sum; they are normalized to
+    sum to 1 when the score is computed.
+    """
+
+    content: float = 0.40
+    similarity: float = 0.30
+    order: float = 0.15
+    orientation: float = 0.10
+    spacing: float = 0.05
+
+    def __post_init__(self) -> None:
+        for name in _COMPONENTS:
+            if getattr(self, name) < 0:
+                raise ValueError(f"weight {name} {getattr(self, name)} must not be negative")
+        if self._total() <= 0:
+            raise ValueError("at least one weight must be positive")
+
+    def normalized(self) -> "ScoringWeights":
+        """The same weights scaled to sum to 1."""
+        total = self._total()
+        return ScoringWeights(**{name: getattr(self, name) / total for name in _COMPONENTS})
+
+    def _total(self) -> float:
+        return float(sum(getattr(self, name) for name in _COMPONENTS))
