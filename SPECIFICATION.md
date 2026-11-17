@@ -799,6 +799,10 @@ homolocus find --reference ecoli_pai.gbk --genome target.gbk --output results/
 
 `--start` and `--end` are 1-based inclusive. The CLI exposes DIAMOND thresholds, `max_target_seqs`, detection thresholds, family grouping, scoring weights and padding. A configuration file is not required in v0.1.
 
+- **[PROPOSED]** Options are generated from the configuration dataclasses: one flag per field of `DiamondSearch`, `FamilyGrouping` and `RegionDetection`, named after the field (`min_identity` → `--min-identity`), and one per `ScoringWeights` field prefixed `--weight-` (`--weight-order`). `--no-family-grouping` disables grouping (`family_min_identity=None`) and `--annotation {auto,pyrodigal}` selects target annotation. Unset flags keep the dataclass defaults, which `--help` shows. `--start` and `--end` are given together or not at all.
+- **[PROPOSED]** Exit codes: 0 on success; 2 for a usage error or an invalid setting; 1 when input cannot be read or is invalid, or DIAMOND is missing or fails. Errors are one line on stderr without a traceback.
+- **[PROPOSED]** After writing, `find` prints one line per candidate to stdout (rank, candidate ID, `contig:start-end` 1-based, score, reference coverage, flags), or `no candidates`, then the output directory. Warnings still go to stderr through the `warnings` module.
+
 ────────
 
 ## 14. Outputs
@@ -833,7 +837,7 @@ results/
   - Flag tokens are joined with `;` and empty when none: `split`, `fusion`, `partial`, `edge` in the summary; `partial`, `split_fragment`, `fused` on gene rows.
   - Floats are written with 6 significant digits.
   - `analysis.json` is sorted, indented JSON with `homolocus_version`, `tool_versions` (DIAMOND, Pyrodigal, Biopython), `parameters`, `reference`, `target`, `families`, `reference_genes_without_protein`, `skipped_features`, `untranslatable_genes` (coordinates 1-based) and `warnings`.
-  - Managed files are `summary.tsv`, `candidates/candidate_*.tsv`, `alignments/*` and `analysis.json`. Rewriting removes stale `candidate_*.tsv` files from an earlier run and leaves other files alone.
+  - Managed files are `summary.tsv`, `candidates/candidate_*.tsv`, `plots/regions.png`, `plots/candidate_*.png`, `alignments/*` and `analysis.json`. Rewriting removes stale `candidate_*.tsv` and `candidate_*.png` files from an earlier run and leaves other files alone.
   - With family grouping disabled the self-search is not run and `alignments/reference_self.tsv` is empty.
 
 ────────
@@ -994,6 +998,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 21. 12-decimal score precision when ranking, 7.9.
 22. RegionFinder constructor, candidate IDs, summary and gene-row layout, flag tokens, float precision, analysis.json keys, managed files, no self-search without grouping, 12, 14.
 23. Matched-gene colour and its tie rule, grey shades, per-line axes, best-copy outline, plotting API and plot files, 11.
+24. CLI options generated from the configuration dataclasses, exit codes and the stdout summary, 13.
 
 **Still open:**
 
