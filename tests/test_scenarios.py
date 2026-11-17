@@ -9,6 +9,7 @@ import csv
 
 import pytest
 
+from homolocus import RegionDetection
 from scenario_world import Slot, World, blocks, genome, run
 
 pytestmark = pytest.mark.diamond
@@ -177,3 +178,17 @@ def test_region_at_a_contig_end_is_flagged_edge() -> None:
     inside = world.contig("t1", slots)
     assert run(world.reference(), genome(at_start)).candidates[0].touches_contig_edge
     assert not run(world.reference(), genome(inside)).candidates[0].touches_contig_edge
+
+
+def test_halves_on_two_contigs_are_never_combined() -> None:
+    world = World(4)
+    left = world.contig("t1", [Slot(world.copy(0)), Slot(world.copy(1))])
+    right = world.contig("t2", [Slot(world.copy(2)), Slot(world.copy(3))])
+    reference = world.reference()
+    assert run(reference, genome(left, right)).candidates == ()
+    # min_matches=2 lets each half pass on its own contig.
+    halves = run(reference, genome(left, right), detection=RegionDetection(min_matches=2))
+    assert sorted(c.contig_id for c in halves.candidates) == ["t1", "t2"]
+    for candidate in halves.candidates:
+        assert {gene.contig_id for gene in candidate.genes} == {candidate.contig_id}
+    assert [c.reference_coverage for c in halves.candidates] == [0.5, 0.5]
