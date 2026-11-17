@@ -1,5 +1,6 @@
 """Shared fixtures: synthetic GenBank files written with Biopython."""
 
+import os
 import random
 import shutil
 from collections.abc import Callable, Sequence
@@ -11,15 +12,22 @@ from Bio.Seq import Seq
 from Bio.SeqFeature import SeqFeature
 from Bio.SeqRecord import SeqRecord
 
+MISSING_DIAMOND = "DIAMOND executable not found on PATH; install DIAMOND 2.0+"
+
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Skip DIAMOND tests with a clear message when DIAMOND is not installed (spec 15)."""
-    if shutil.which("diamond") is not None:
+    """Handle DIAMOND tests when DIAMOND is not installed (spec 15).
+
+    They are skipped with a clear message, unless HOMOLOCUS_REQUIRE_DIAMOND=1
+    (set in CI), which makes a missing DIAMOND an error.
+    """
+    needs_diamond = [item for item in items if "diamond" in item.keywords]
+    if not needs_diamond or shutil.which("diamond") is not None:
         return
-    skip = pytest.mark.skip(reason="DIAMOND executable not found on PATH; install DIAMOND 2.0+")
-    for item in items:
-        if "diamond" in item.keywords:
-            item.add_marker(skip)
+    if os.environ.get("HOMOLOCUS_REQUIRE_DIAMOND") == "1":
+        raise pytest.UsageError(f"HOMOLOCUS_REQUIRE_DIAMOND=1 but {MISSING_DIAMOND}")
+    for item in needs_diamond:
+        item.add_marker(pytest.mark.skip(reason=MISSING_DIAMOND))
 
 
 RecordFactory = Callable[[str, str, Sequence[SeqFeature]], SeqRecord]
