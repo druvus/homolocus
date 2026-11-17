@@ -195,8 +195,20 @@ def test_write_creates_the_whole_tree(tmp_path) -> None:
         "analysis.json",
         "candidates/candidate_001.tsv",
         "candidates/candidate_002.tsv",
+        "plots/candidate_001.png",
+        "plots/candidate_002.png",
+        "plots/regions.png",
         "summary.tsv",
     ]
+
+
+def test_plots_are_png_at_150_dpi(tmp_path) -> None:
+    results().write(tmp_path)
+    for name in ("regions.png", "candidate_001.png"):
+        data = (tmp_path / "plots" / name).read_bytes()
+        assert data.startswith(b"\x89PNG\r\n\x1a\n")
+        assert int.from_bytes(data[16:20], "big") == 11 * 150  # width: 11 in at 150 dpi
+        assert b"Software" not in data
 
 
 def test_raw_diamond_tables_are_written_byte_for_byte(tmp_path) -> None:
@@ -249,10 +261,15 @@ def test_stale_candidate_files_are_removed_and_foreign_files_kept(tmp_path) -> N
     (tmp_path / "candidates").mkdir()
     (tmp_path / "candidates" / "candidate_009.tsv").write_text("old")
     (tmp_path / "candidates" / "notes.txt").write_text("mine")
+    (tmp_path / "plots").mkdir()
+    (tmp_path / "plots" / "candidate_009.png").write_text("old")
+    (tmp_path / "plots" / "notes.png").write_text("mine")
     (tmp_path / "README").write_text("mine too")
     results().write(tmp_path)
     assert not (tmp_path / "candidates" / "candidate_009.tsv").exists()
     assert (tmp_path / "candidates" / "notes.txt").read_text() == "mine"
+    assert not (tmp_path / "plots" / "candidate_009.png").exists()
+    assert (tmp_path / "plots" / "notes.png").read_text() == "mine"
     assert (tmp_path / "README").read_text() == "mine too"
 
 
@@ -260,6 +277,7 @@ def test_no_candidates_still_writes_headers(tmp_path) -> None:
     results(candidates=()).write(tmp_path)
     assert (tmp_path / "summary.tsv").read_text().startswith("rank\tcandidate_id\t")
     assert list((tmp_path / "candidates").iterdir()) == []
+    assert [p.name for p in (tmp_path / "plots").iterdir()] == ["regions.png"]
 
 
 def analysis(tmp_path, **overrides) -> dict:
