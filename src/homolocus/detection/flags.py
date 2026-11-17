@@ -5,9 +5,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from homolocus.config import RegionDetection
 from homolocus.detection.candidate_generation import EventWindow
 from homolocus.intervals import Interval, merge_intervals, union_length
-from homolocus.models.cluster import SplitEvent
+from homolocus.models.cluster import FusionEvent, SplitEvent
 from homolocus.models.contig import Contig
 from homolocus.models.gene import Gene
+from homolocus.models.gene_family import ReferenceFamilies
 from homolocus.models.gene_match import GeneMatch
 
 Part = tuple[str, tuple[Interval, ...]]
@@ -88,6 +89,56 @@ def _split_event(
         adjacent=last - first == len(fragments) - 1,
         same_strand=len({genes[fragment].strand for fragment in fragments}) == 1,
     )
+
+
+def fusion_events(
+    contig: Contig,
+    matches: Iterable[GeneMatch],
+    families: ReferenceFamilies,
+    detection: RegionDetection,
+) -> tuple[FusionEvent, ...]:
+    """Target proteins aligned to parts of several families (spec 9.3, 9.4).
+
+    ``matches`` are a candidate's passing evidence matches. For each target
+    gene, in genomic order, the aligned target positions are merged per
+    family; parts covering at least ``min_fusion_part_coverage`` of the target
+    protein are chosen greedily, largest first (ties by position), skipping one
+    that overlaps a chosen part by more than ``max_fragment_overlap`` of the
+    shorter. Two or more chosen families form a FusionEvent, listed in order
+    along the protein. Members of one family never make a fusion.
+    """
+    by_target: dict[str, dict[str, list[Interval]]] = {}
+    lengths: dict[str, int] = {}
+    for match in matches:
+        family_id = families.family_of(match.reference_gene_id).id
+        spans = by_target.setdefault(match.target_gene_id, {}).setdefault(family_id, [])
+        spans.extend(hsp.subject_interval for hsp in match.alignments)
+        lengths[match.target_gene_id] = match.subject_length
+    found = []
+    for gene in contig.genes:
+        if gene.id in by_target:
+            fused = _fused_families(by_target[gene.id], lengths[gene.id], detection)
+            if fused:
+                found.append(FusionEvent(gene.id, fused))
+    return tuple(found)
+
+
+def _fused_families(
+    by_family: Mapping[str, list[Interval]], length: int, detection: RegionDetection
+) -> tuple[str, ...]:
+    merged = {family: merge_intervals(spans) for family, spans in by_family.items()}
+    parts = sorted(
+        (
+            part
+            for part in merged.items()
+            if union_length(part[1]) / length >= detection.min_fusion_part_coverage
+        ),
+        key=lambda part: (-union_length(part[1]), part[1][0]),
+    )
+    chosen = _choose(parts, detection.max_fragment_overlap)
+    if len(chosen) < 2:
+        return ()
+    return tuple(family for family, _ in sorted(chosen, key=lambda part: part[1][0]))
 
 
 def _unique_length(target: str, merged: Mapping[str, tuple[Interval, ...]]) -> int:

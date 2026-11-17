@@ -202,3 +202,116 @@ def test_adjacency_is_false_when_the_first_fragments_are_set_apart() -> None:
 
 def test_small_separate_fragment_below_the_threshold_is_not_a_fragment() -> None:
     assert splits(piece(R1, T1, (0, 90)), piece(R1, T2, (90, 100))) == ()
+
+
+# Potential fusions (spec 9.3, 9.4)
+
+from homolocus import GeneFamily, ReferenceFamilies  # noqa: E402
+from homolocus.detection.flags import fusion_events  # noqa: E402
+from homolocus.models.cluster import FusionEvent  # noqa: E402
+
+R3 = "ref|801-1100|+"
+FAMILY_SET = ReferenceFamilies(
+    (GeneFamily("F001", (R1,)), GeneFamily("F002", (R2,)), GeneFamily("F003", (R3,)))
+)
+PARALOGS = ReferenceFamilies((GeneFamily("F001", (R1, R2)), GeneFamily("F002", (R3,))))
+
+
+def part(reference: str, target: Gene, *spans: tuple[int, int]) -> GeneMatch:
+    hsps = tuple(
+        Alignment(
+            reference,
+            target.id,
+            80.0,
+            end - start,
+            0,
+            end - start,
+            start,
+            end,
+            100,
+            100,
+            1e-30,
+            100.0,
+        )
+        for start, end in spans
+    )
+    return GeneMatch(reference, target.id, hsps)
+
+
+def fusions(*matches: GeneMatch, families=FAMILY_SET, **settings) -> tuple[FusionEvent, ...]:
+    contig = Contig("t1", "A" * LENGTH, (T1, T2, BETWEEN, T3))
+    return fusion_events(contig, matches, families, RegionDetection(**settings))
+
+
+def test_two_families_on_separate_parts_are_a_fusion() -> None:
+    (event,) = fusions(part(R1, T1, (0, 50)), part(R2, T1, (50, 100)))
+    assert event == FusionEvent(T1.id, ("F001", "F002"))
+
+
+def test_families_are_listed_in_protein_order() -> None:
+    (event,) = fusions(part(R1, T1, (50, 100)), part(R2, T1, (0, 50)))
+    assert event.family_ids == ("F002", "F001")
+
+
+def test_members_of_one_family_are_not_a_fusion() -> None:
+    matches = (part(R1, T1, (0, 50)), part(R2, T1, (50, 100)))
+    assert fusions(*matches, families=PARALOGS) == ()
+
+
+def test_shared_domain_is_not_a_fusion() -> None:
+    assert fusions(part(R1, T1, (0, 60)), part(R2, T1, (10, 70))) == ()
+
+
+@pytest.mark.parametrize(("start", "flagged"), [(40, True), (39, False)])
+def test_part_overlap_limit_is_inclusive(start: int, flagged: bool) -> None:
+    found = fusions(part(R1, T1, (0, 50)), part(R2, T1, (start, 100)))
+    assert bool(found) is flagged
+
+
+@pytest.mark.parametrize(("end", "flagged"), [(100, True), (99, False)])
+def test_part_coverage_threshold_is_inclusive(end: int, flagged: bool) -> None:
+    found = fusions(part(R1, T1, (0, 60)), part(R2, T1, (80, end)))
+    assert bool(found) is flagged
+
+
+def test_a_third_overlapping_family_does_not_hide_a_fusion() -> None:
+    matches = (part(R3, T1, (0, 45)), part(R1, T1, (0, 50)), part(R2, T1, (50, 100)))
+    (event,) = fusions(*matches)
+    assert event.family_ids == ("F001", "F002")
+
+
+def test_hsps_of_one_family_are_merged_into_one_part() -> None:
+    matches = (part(R1, T1, (0, 30)), part(R2, T1, (30, 60)), part(R3, T1, (60, 100)))
+    (event,) = fusions(*matches, families=PARALOGS)
+    assert event.family_ids == ("F001", "F002")
+
+
+def test_one_family_alone_is_not_a_fusion() -> None:
+    assert fusions(part(R1, T1, (0, 50), (50, 100))) == ()
+
+
+def test_fusions_are_reported_in_genomic_order() -> None:
+    matches = (
+        part(R1, T3, (0, 50)),
+        part(R2, T3, (50, 100)),
+        part(R1, T1, (0, 50)),
+        part(R3, T1, (50, 100)),
+    )
+    assert [e.target_gene_id for e in fusions(*matches)] == [T1.id, T3.id]
+
+
+def test_custom_part_coverage_is_used() -> None:
+    matches = (part(R1, T1, (0, 70)), part(R2, T1, (85, 100)))
+    assert fusions(*matches) == ()
+    assert fusions(*matches, min_fusion_part_coverage=0.15) != ()
+
+
+def test_equal_parts_in_conflict_resolve_by_protein_position() -> None:
+    matches = (part(R1, T1, (30, 80)), part(R2, T1, (0, 50)), part(R3, T1, (80, 100)))
+    (event,) = fusions(*matches)
+    assert event.family_ids == ("F002", "F003")
+
+
+def test_order_follows_the_protein_not_the_part_size() -> None:
+    (event,) = fusions(part(R1, T1, (0, 30)), part(R2, T1, (30, 100)))
+    assert event.family_ids == ("F001", "F002")
