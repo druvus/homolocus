@@ -765,7 +765,9 @@ results.plot()
 
 The API exposes intermediate models (alignments, matches, families, candidates, score components). The exact signatures stay provisional. No save/load of results in v0.1.
 
-**[OPEN]** `to_dataframe()` granularity (one row per candidate vs. per gene). Proposed: per candidate by default, `results.genes_dataframe()` for gene-level rows.
+- **[DECIDED]** `results.to_dataframe()` has one row per candidate (the `summary.tsv` columns); `results.genes_dataframe()` has the gene-level rows (the candidate TSV columns plus `candidate_id`).
+- **[DECIDED]** `finder.find(genome)` has no file side effects: DIAMOND runs in a temporary directory and the raw tables and token mapping are kept in the results. `results.write(output_dir)` writes every output file of section 14, the raw DIAMOND tables byte for byte.
+- **[PROPOSED]** `RegionFinder(reference, search=DiamondSearch(), family_grouping=FamilyGrouping(), detection=RegionDetection(), scoring=ScoringWeights())`. `results.best_candidate` is `None` when nothing passes.
 
 ────────
 
@@ -811,6 +813,16 @@ results/
 - **[PROPOSED]** `summary.tsv` columns: `rank, candidate_id, contig, start, end, span_bp, score, content, similarity, order, orientation, spacing, reference_coverage, mean_protein_coverage, n_target_genes, n_matched_genes, n_missing_families, flags`.
 - **[PROPOSED]** Candidate TSV columns: `target_gene_id, locus_tag, product, start, end, strand, role (matched|additional), reference_gene_id, family_id, identity, query_coverage, subject_coverage, bit_score, is_best_copy, flags`.
 - **[PROPOSED]** Writing results is idempotent. Re-running into an existing output directory overwrites the files the package manages and leaves other files untouched. Identical input and parameters give identical output files: rows and candidates are ordered deterministically, and no output file carries a timestamp except the run metadata in `analysis.json`.
+- **[DECIDED]** `analysis.json` carries no timestamp either, so identical input and parameters give byte-identical output directories.
+- **[PROPOSED]** Output details:
+  - Candidate IDs are `candidate_001`, `candidate_002`, … in rank order.
+  - `summary.tsv` `start`/`end` are the unpadded span; `display_start`/`display_end` follow them with the padded interval (10).
+  - The candidate TSV has one row per gene and GeneMatch (genes in genomic order, then reference gene ID), and one row with empty match columns for a gene without matches.
+  - Flag tokens are joined with `;` and empty when none: `split`, `fusion`, `partial`, `edge` in the summary; `partial`, `split_fragment`, `fused` on gene rows.
+  - Floats are written with 6 significant digits.
+  - `analysis.json` is sorted, indented JSON with `homolocus_version`, `tool_versions` (DIAMOND, Pyrodigal, Biopython), `parameters`, `reference`, `target`, `families`, `reference_genes_without_protein`, `skipped_features`, `untranslatable_genes` (coordinates 1-based) and `warnings`.
+  - Managed files are `summary.tsv`, `candidates/candidate_*.tsv`, `alignments/*` and `analysis.json`. Rewriting removes stale `candidate_*.tsv` files from an earlier run and leaves other files alone.
+  - With family grouping disabled the self-search is not run and `alignments/reference_self.tsv` is empty.
 
 ────────
 
@@ -859,6 +871,8 @@ homolocus/
 │   ├── __init__.py
 │   ├── cli.py
 │   ├── finder.py
+│   ├── results.py                 # RegionResults, summary and gene rows, data frames
+│   ├── output.py                  # writes the output directory (14), I/O layer
 │   ├── config.py                  # DiamondSearch, RegionDetection, FamilyGrouping, ScoringWeights
 │   ├── coordinates.py             # 0-based half-open <-> 1-based inclusive
 │   ├── intervals.py               # interval unions for coverage (5.7, 7.7)
@@ -952,7 +966,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 6. Component formulas for similarity, order, orientation and spacing, section 8.
 7. DIAMOND fields and `--max-hsps 0`, 6.2 and 6.4.
 8. Units: identity in percent, coverage as fractions, 0.2.
-9. Output columns, section 14, and `to_dataframe()` granularity, section 12.
+9. Output columns, section 14.
 10. Pyrodigal training strategy for assemblies of 20 kb or more, 2.2.
 11. `edge_margin_bp` default of 500, section 10.
 12. Idempotent, deterministic output writing, section 14.
@@ -965,6 +979,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 19. Best member and best copy, non-strict order, components with fewer than two families, full ranking key, greedy overlap deduplication, inclusive edge margin, 7.7, 7.9, 8, 10.
 20. Split and fusion thresholds (20 % each, unvalidated) and greedy choice of fragments and parts, 9.4.
 21. 12-decimal score precision when ranking, 7.9.
+22. RegionFinder constructor, candidate IDs, summary and gene-row layout, flag tokens, float precision, analysis.json keys, managed files, no self-search without grouping, 12, 14.
 
 **Still open:**
 
