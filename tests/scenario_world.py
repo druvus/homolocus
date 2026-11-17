@@ -53,6 +53,10 @@ class World:
         self._proteins = SyntheticProteins(seed)
         self.reference_proteins = [self._proteins.random(LENGTH) for _ in range(n_genes)]
 
+    def make_paralog(self, index: int, of: int, identity: float = 0.95) -> None:
+        """Replace reference protein ``index`` with a close paralog of protein ``of``."""
+        self.reference_proteins[index] = self.copy(of, identity)
+
     def reference(self) -> ReferenceRegion:
         """The reference region on contig ``ref``, genes in protein order."""
         genes = lay_out("ref", [Slot(p) for p in self.reference_proteins], offset=0)
@@ -78,6 +82,14 @@ class World:
         genes = lay_out(contig_id, slots, offset=offset)
         length = (genes[-1].end if genes else offset) + tail
         return Contig(contig_id, "A" * length, genes)
+
+
+def blocks(contig_id: str, *placed: tuple[int, Sequence[Slot]], length: int) -> Contig:
+    """A contig of ``length`` bp with each block of slots laid out from its offset."""
+    genes = tuple(
+        gene for offset, slots in placed for gene in lay_out(contig_id, slots, offset=offset)
+    )
+    return Contig(contig_id, "A" * length, genes)
 
 
 def genome(*contigs: Contig) -> Genome:

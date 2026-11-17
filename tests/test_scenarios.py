@@ -7,7 +7,7 @@ checks what a user would see in the results.
 
 import pytest
 
-from scenario_world import Slot, World, genome, run
+from scenario_world import Slot, World, blocks, genome, run
 
 pytestmark = pytest.mark.diamond
 
@@ -85,3 +85,44 @@ def test_rearranged_order_lowers_only_the_order_component() -> None:
     assert candidate.components.order < straight.order == 1.0
     assert candidate.components.content == straight.content
     assert candidate.components.similarity == pytest.approx(straight.similarity)
+
+
+def test_duplicated_homologue_keeps_both_copies_and_counts_the_family_once() -> None:
+    world = World(4)
+    slots = [Slot(world.copy(0)), Slot(world.copy(1, 0.95)), Slot(world.copy(1, 0.7))]
+    target = world.contig("t1", [*slots, Slot(world.copy(2)), Slot(world.copy(3))])
+    (candidate,) = run(world.reference(), genome(target)).candidates
+    strong, weak = target.genes[1].id, target.genes[2].id
+    assert {strong, weak} <= set(candidate.event_ids)
+    (family,) = [f for f in candidate.families if f.family_id == "F002"]
+    assert set(family.copies) >= {strong, weak}
+    assert family.best_copy_id == strong
+    assert candidate.reference_coverage == 1.0
+
+
+def test_close_paralogs_form_one_family_counted_once() -> None:
+    world = World(4)
+    world.make_paralog(3, of=1)
+    found = run(
+        world.reference(), genome(world.contig("t1", [Slot(world.copy(i)) for i in range(3)]))
+    )
+    reference = world.reference()
+    assert [f.gene_ids for f in found.families] == [
+        (reference.genes[0].id,),
+        (reference.genes[1].id, reference.genes[3].id),
+        (reference.genes[2].id,),
+    ]
+    (candidate,) = found.candidates
+    assert candidate.reference_coverage == 1.0
+    assert candidate.missing_families == ()
+
+
+def test_two_copies_on_one_contig_are_ranked_by_strength() -> None:
+    world = World(4)
+    strong = [Slot(world.copy(i, 0.95)) for i in range(4)]
+    weak = [Slot(world.copy(i, 0.7)) for i in range(4)]
+    target = blocks("t1", (200_000, weak), (10_000, strong), length=300_000)
+    first, second = run(world.reference(), genome(target)).candidates
+    assert first.start == 10_000
+    assert second.start == 200_000
+    assert first.score > second.score
