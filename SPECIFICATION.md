@@ -735,7 +735,7 @@ Matplotlib only in v0.1.
 - Actual genomic orientation is shown. Target regions are not silently reoriented.
 
 - **[DECIDED]** Family colours: families take the eight validated colour-blind-safe palette hues in reference order (blue `#2a78d6`, orange `#eb6834`, aqua `#1baf7a`, yellow `#eda100`, magenta `#e87ba4`, green `#008300`, violet `#6250d6`, red `#e34948`); family 9 reuses hue 1, and so on. Colour is never the only cue: every coloured gene carries its family ID as a label, and a legend maps family IDs to colours.
-- **[PROPOSED]** A matched target gene takes the colour of the family of its best-bit-score passing match (7.6). Additional genes and reference genes without a protein are light grey (`#d9d8d2`) and unlabelled. Each overview line lists its missing families as text.
+- **[PROPOSED]** A matched target gene takes the colour of the family of its best-bit-score passing match (7.6); on equal bit scores, the family that comes first in reference order wins. Additional genes and reference genes without a protein are light grey (`#d9d8d2`) and unlabelled. Each overview line lists its missing families as text.
 - **[PROPOSED]** Every line has its own 1-based x-axis over its interval: the reference region, or a candidate's display interval (10).
 
 ### 11.2 Individual candidate plot
@@ -993,7 +993,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 20. Split and fusion thresholds (20 % each, unvalidated) and greedy choice of fragments and parts, 9.4.
 21. 12-decimal score precision when ranking, 7.9.
 22. RegionFinder constructor, candidate IDs, summary and gene-row layout, flag tokens, float precision, analysis.json keys, managed files, no self-search without grouping, 12, 14.
-23. Matched-gene colour, grey shades, per-line axes, best-copy outline, plotting API and plot files, 11.
+23. Matched-gene colour and its tie rule, grey shades, per-line axes, best-copy outline, plotting API and plot files, 11.
 
 **Still open:**
 
