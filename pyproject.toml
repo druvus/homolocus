@@ -39,6 +39,7 @@ dev = [
     "hypothesis",
     "ruff",
     "mypy",
+    "pandas-stubs",
 ]
 
 [project.scripts]
@@ -75,8 +76,13 @@ select = [
     "PL",            # pylint
     "RET",           # return consistency
     "PT",            # pytest style
+    "C90",           # mccabe complexity (early guard for CRAP < 10)
+    "PGH",           # no blanket type: ignore
 ]
 ignore = ["PLR2004"]  # magic values are common in test data
+
+[tool.ruff.lint.mccabe]
+max-complexity = 9
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR0913", "PLR0915"]
@@ -87,5 +93,5 @@ strict = true
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["Bio.*", "pyrodigal.*", "pandas.*", "matplotlib.*"]
+module = ["Bio.*"]  # Biopython ships no type information
 ignore_missing_imports = true
