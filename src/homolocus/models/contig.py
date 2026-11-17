@@ -2,11 +2,7 @@
 
 from dataclasses import dataclass
 
-from homolocus.models.gene import Gene
-
-
-def _gene_order(gene: Gene) -> tuple[int, int, int]:
-    return gene.start, gene.end, gene.strand
+from homolocus.models.gene import Gene, genomic_order
 
 
 @dataclass(frozen=True)
@@ -30,7 +26,7 @@ class Contig:
         for gene in self.genes:
             self._check_gene(gene)
         self._check_unique_ids()
-        object.__setattr__(self, "genes", tuple(sorted(self.genes, key=_gene_order)))
+        object.__setattr__(self, "genes", tuple(sorted(self.genes, key=genomic_order)))
 
     def _check_gene(self, gene: Gene) -> None:
         if gene.contig_id != self.id:

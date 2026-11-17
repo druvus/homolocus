@@ -57,3 +57,8 @@ class Gene:
     def length(self) -> int:
         """Length of the gene in base pairs."""
         return self.end - self.start
+
+
+def genomic_order(gene: Gene) -> tuple[int, int, int]:
+    """Sort key for genes on a contig: start, then end, then strand (spec 4)."""
+    return gene.start, gene.end, gene.strand
