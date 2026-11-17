@@ -515,6 +515,13 @@ Linked events form a chain (single linkage). Each duplicated copy is its own eve
 - For each event as the left anchor, extend right while the span stays at most `max_region_bp`.
 - Discard windows whose set of events is a subset of another window's.
 
+Measurement and ordering:
+
+- **[DECIDED]** Events are sorted by start, so with nested or overlapping genes the previous event may not reach furthest. The bp gap is the next event's start minus the largest end reached so far in the chain (minimum 0), and a span runs from the first event's start to the largest end. Without nesting this equals the wording above, and a candidate always contains every event gene.
+- **[PROPOSED]** Intervening genes are counted from the contig's sorted gene list, between the positions of the two consecutive events.
+- **[PROPOSED]** A single event longer than `max_region_bp` still forms a window of one; `min_matches` removes it later.
+- **[PROPOSED]** Windows are reported per contig, ordered by start and then end. Windows with the same event set are kept once.
+
 **Evaluation and deduplication.**
 
 - Each chain or window is evaluated independently (7.7).
@@ -544,6 +551,7 @@ detection = RegionDetection(
     max_candidate_overlap=0.5,
     padding_genes=0,
     padding_bp=0,
+    edge_margin_bp=500,               # contig-edge flag distance (10)
 )
 ```
 
@@ -689,6 +697,7 @@ Thresholds need validation on real data. Proposed starting values, all configura
 - Boundaries are the outermost matching events of the chain or window, not predefined flanking genes. With zero padding, the candidate runs from the start of the first matched gene to the end of the last matched gene.
 - All intervening genes, including unrelated insertions, are retained.
 - Padding options: `padding_genes` and `padding_bp`, default 0. If both are given, the larger resulting extent is used **[PROPOSED]**. Padding is clipped to the contig ends.
+- **[PROPOSED]** `padding_genes` adds whole genes from the contig's sorted gene list on each side of the outermost events; `padding_bp` adds base pairs.
 - **[PROPOSED]** `max_region_bp` is checked against the **unpadded** span. Padding is added afterwards and affects the reconstructed/displayed interval only, not the evidence used for detection.
 - A candidate's `touches_contig_edge` flag is set when its first or last matched gene is partial or lies within `edge_margin_bp` of the contig end (**[PROPOSED]** default 500). It signals possible truncation by assembly fragmentation.
 
@@ -934,6 +943,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 15. Inclusive pair-level threshold comparisons, 5.7.
 16. DIAMOND token prefixes `r`/`t`, minimum DIAMOND 2.0, and deterministic sorting of parsed alignments, 4.1, 6.2, 6.4.
 17. Family linking from aggregated self-search evidence with inclusive thresholds, and family ID numbering, 7.6.
+18. Literal intervening-gene count, single over-long event windows, window ordering, and gene-based padding, 7.3, 10.
 
 **Still open:**
 
