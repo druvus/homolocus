@@ -387,7 +387,7 @@ Retain:
 - Families represented and missing.
 - Score and `ScoreComponents` (section 8).
 - Reference-gene-level coverage per family (8.1).
-- Flags: potential split, potential fusion, contains partial genes, touches contig edge.
+- Flags: potential split, potential fusion, contains partial genes, touches contig edge. The split and fusion events behind the first two flags are kept as `splits` and `fusions` (9.4).
 - Number of duplicated homologue copies per family.
 
 The cluster is a result of detection, not a place to run DIAMOND.
@@ -552,6 +552,9 @@ detection = RegionDetection(
     padding_genes=0,
     padding_bp=0,
     edge_margin_bp=500,               # contig-edge flag distance (10)
+    min_split_contribution=0.2,       # split and fusion heuristics (9.4)
+    max_fragment_overlap=0.2,
+    min_fusion_part_coverage=0.2,
 )
 ```
 
@@ -600,6 +603,7 @@ Gene order is supporting evidence, not a requirement. Rearrangements do not disq
 Return all candidates passing thresholds, ranked by composite score (ties: higher reference coverage, then lower contig start). Do not return only the top one. Candidates on separate contigs remain separate.
 
 - **[PROPOSED]** Full ranking key: score descending, reference coverage descending, then contig order in the genome, start, end and event IDs, so the order is always deterministic.
+- **[PROPOSED]** Scores are compared at 12-decimal precision when ranking, so floating-point noise never decides a tie that belongs to reference coverage. The reported score is not rounded.
 - **[PROPOSED]** Overlap deduplication (7.3) is greedy in rank order: a candidate is dropped when its unpadded span overlaps an already kept candidate on the same contig by more than `max_candidate_overlap` times the shorter span.
 - **[PROPOSED]** The checks run in `detection/evaluation.py`: events, windows, evaluation, filtering, ranking, deduplication, per contig. `min_matches` greater than the number of families raises an error before any contig is processed.
 
@@ -691,13 +695,15 @@ Detect and flag only. A potential fusion: one target protein aligns to different
 - Matching several members of the same family is not a fusion.
 - Be careful to distinguish fusions from proteins sharing a common domain.
 
-### 9.4 Heuristics [OPEN, with proposed defaults]
+### 9.4 Heuristics [PROPOSED]
 
-Thresholds need validation on real data. Proposed starting values, all configurable:
+Thresholds need validation on real data. The user chose the starting values below as unvalidated defaults; all are configurable in `RegionDetection` (`min_split_contribution`, `max_fragment_overlap`, `min_fusion_part_coverage`, each 0.2).
 
 - **Split flag**: at least 2 target genes in the candidate each contribute at least 20 % of the reference protein's length not already covered by the others (unique contribution), their pairwise overlap is at most 20 % of the shorter alignment, and the union reaches `min_reference_gene_coverage`.
 - **Fusion flag**: one target gene has non-overlapping alignments (overlap at most 20 % of the shorter) to at least 2 different families, each covering at least 20 % of the target protein's length.
-- Neighbouring orientation and adjacency of fragments are recorded but not required in v0.1.
+- Only GeneMatches from the candidate's evidence genes that pass the pair-level thresholds are used. Several members of one family never make a fusion.
+- Fragments and fused parts are chosen greedily: largest first (unique contribution for splits, part length for fusions; ties in genomic order or protein position), skipping one that overlaps an already chosen one by more than the limit. A real fusion therefore stays visible when two other families only share a domain.
+- Neighbouring orientation and adjacency of fragments are recorded but not required in v0.1. **[DECIDED]** A split event records its fragments in genomic order, `adjacent` (no other gene between them on the contig) and `same_strand`. A fusion event records the target gene and its families in order along the protein.
 
 ────────
 
@@ -957,11 +963,12 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 17. Family linking from aggregated self-search evidence with inclusive thresholds, and family ID numbering, 7.6.
 18. Literal intervening-gene count, single over-long event windows, window ordering, and gene-based padding, 7.3, 10.
 19. Best member and best copy, non-strict order, components with fewer than two families, full ranking key, greedy overlap deduplication, inclusive edge margin, 7.7, 7.9, 8, 10.
+20. Split and fusion thresholds (20 % each, unvalidated) and greedy choice of fragments and parts, 9.4.
+21. 12-decimal score precision when ranking, 7.9.
 
 **Still open:**
 
-- Split and fusion thresholds (9.4 values are untested starting points).
-- Distinguishing true fusions from shared domains beyond the family rule.
+- Distinguishing true fusions from shared domains beyond the family rule (the 9.4 overlap limit covers the simple case).
 - Weights and component definitions need validation on real data (v0.1 ships them as unvalidated defaults).
 
 Do not silently resolve these during implementation. Record the chosen default and ask when behaviour is materially affected.
