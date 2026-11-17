@@ -29,9 +29,11 @@ from homolocus.annotation.translation import (
     check_supplied_translation,
     translate_cds,
 )
+from homolocus.coordinates import to_zero_based
 from homolocus.models.contig import Contig
 from homolocus.models.gene import Gene
 from homolocus.models.genome import Genome
+from homolocus.models.reference import ReferenceRegion
 from homolocus.models.skipped_feature import SkippedFeature, SkipReason
 
 Region = tuple[int, int]
@@ -89,6 +91,53 @@ def read_genbank(path: str | Path) -> Genome:
     return Genome(contigs=contigs, source=str(path), skipped_features=tuple(skipped))
 
 
+def read_reference_region(
+    path: str | Path,
+    *,
+    contig: str | None = None,
+    start: int | None = None,
+    end: int | None = None,
+) -> ReferenceRegion:
+    """Read a reference region; ``start``/``end`` are 1-based inclusive (spec 2.1)."""
+    record = _select_record(read_records(path), contig, path)
+    sequence = record_sequence(record)
+    region = _region(start, end, len(sequence))
+    parsed = parse_record(record, region)
+    return ReferenceRegion(
+        contig_id=record_id(record),
+        start=region[0],
+        end=region[1],
+        sequence=sequence[region[0] : region[1]],
+        genes=tuple(parsed.genes),
+        source_genome=str(path),
+        skipped_features=tuple(parsed.skipped),
+    )
+
+
+def _select_record(records: list[SeqRecord], contig: str | None, path: str | Path) -> SeqRecord:
+    if contig is None:
+        if len(records) != 1:
+            raise ValueError(f"{path} contains {len(records)} records; choose one with contig")
+        return records[0]
+    matches = [record for record in records if record_id(record) == contig]
+    if not matches:
+        raise ValueError(f"contig {contig!r} not found in {path}")
+    if len(matches) > 1:
+        raise ValueError(f"duplicate record ID {contig!r} in {path}")
+    return matches[0]
+
+
+def _region(start: int | None, end: int | None, record_length: int) -> Region:
+    if start is None and end is None:
+        return 0, record_length
+    if start is None or end is None:
+        raise ValueError("start and end must be given together")
+    region = to_zero_based(start, end)
+    if region[1] > record_length:
+        raise ValueError(f"region end {end} lies beyond the record length {record_length}")
+    return region
+
+
 def read_records(path: str | Path) -> list[SeqRecord]:
     """Read all records of a GenBank file, closing the file before returning."""
     with open(path, encoding="utf-8") as handle:
@@ -102,11 +151,18 @@ def record_id(record: SeqRecord) -> str:
     return str(record.id)
 
 
+def record_sequence(record: SeqRecord) -> str:
+    """The record's nucleotide sequence. Raises ValueError if it has none."""
+    if record.seq is None:
+        raise ValueError(f"GenBank record {record_id(record)!r} has no sequence")
+    return str(record.seq)
+
+
 def record_contig(record: SeqRecord, genes: Iterable[Gene]) -> Contig:
     """Build a Contig from a GenBank record and its parsed genes."""
     return Contig(
         id=record_id(record),
-        sequence=str(record.seq),
+        sequence=record_sequence(record),
         genes=tuple(genes),
         description=record.description or None,
     )

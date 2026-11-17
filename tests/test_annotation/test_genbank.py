@@ -13,7 +13,12 @@ from Bio.SeqFeature import (
 )
 
 from homolocus import Genome, SkippedFeature, SkipReason
-from homolocus.annotation.genbank import AnnotationWarning, parse_record, read_genbank
+from homolocus.annotation.genbank import (
+    AnnotationWarning,
+    parse_record,
+    read_genbank,
+    record_contig,
+)
 
 # Forward CDS at 0..12 (ATG AAA CCC TAA -> MKP), spacer, reverse CDS at 15..27.
 # Reverse strand of 15..27 is TTAGGGTTTCAT; its reverse complement is ATGAAACCCTAA.
@@ -256,3 +261,10 @@ def test_region_filters_skipped_features_too(make_record) -> None:
         warnings.simplefilter("error")
         parsed = parse_record(record, region=(15, 27))
     assert parsed.skipped == []
+
+
+def test_record_without_sequence_is_rejected(make_record) -> None:
+    record = make_record("c1", SEQUENCE, [])
+    record.seq = None
+    with pytest.raises(ValueError, match="no sequence"):
+        record_contig(record, [])
