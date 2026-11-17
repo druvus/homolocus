@@ -6,7 +6,7 @@ User-facing coordinates are 1-based inclusive (spec 4).
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -19,6 +19,9 @@ from homolocus.models.gene_match import GeneMatch
 from homolocus.models.genome import Genome
 from homolocus.models.reference import ReferenceRegion
 from homolocus.search.protein_index import ProteinIndex
+
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
 
 Row = dict[str, Any]
 
@@ -134,6 +137,18 @@ class RegionResults:
         from homolocus.output import write_results  # noqa: PLC0415
 
         write_results(self, output_dir)
+
+    def plot(self) -> "Figure":
+        """Overview figure: reference line and one line per candidate (spec 11.1)."""
+        from homolocus.visualization.region_plot import overview_figure  # noqa: PLC0415
+
+        return overview_figure(self)
+
+    def plot_candidate(self, rank: int) -> "Figure":
+        """Detailed figure for the candidate at a 1-based rank (spec 11.2)."""
+        from homolocus.visualization.region_plot import candidate_figure  # noqa: PLC0415
+
+        return candidate_figure(self, rank)
 
 
 _EMPTY_MATCH: Row = {
