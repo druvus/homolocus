@@ -2,11 +2,7 @@
 
 from dataclasses import dataclass
 
-from homolocus.models.gene import Gene
-
-
-def _gene_order(gene: Gene) -> tuple[int, int, int]:
-    return gene.start, gene.end, gene.strand
+from homolocus.models.gene import Gene, sorted_genes
 
 
 @dataclass(frozen=True)
@@ -27,21 +23,10 @@ class Contig:
             raise ValueError("contig ID must not be empty")
         if not self.sequence:
             raise ValueError(f"contig {self.id} has an empty sequence")
-        for gene in self.genes:
-            self._check_gene(gene)
-        self._check_unique_ids()
-        object.__setattr__(self, "genes", tuple(sorted(self.genes, key=_gene_order)))
-
-    def _check_gene(self, gene: Gene) -> None:
-        if gene.contig_id != self.id:
-            raise ValueError(f"gene {gene.id} belongs to contig {gene.contig_id}, not {self.id}")
-        if gene.end > self.length:
-            raise ValueError(f"gene {gene.id} extends past the end of contig {self.id}")
-
-    def _check_unique_ids(self) -> None:
-        ids = [gene.id for gene in self.genes]
-        if len(set(ids)) != len(ids):
-            raise ValueError(f"contig {self.id} has duplicate gene IDs")
+        genes = sorted_genes(
+            self.genes, contig_id=self.id, start=0, end=self.length, label=f"contig {self.id}"
+        )
+        object.__setattr__(self, "genes", genes)
 
     @property
     def length(self) -> int:

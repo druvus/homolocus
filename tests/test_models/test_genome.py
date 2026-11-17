@@ -2,7 +2,7 @@
 
 import pytest
 
-from homolocus import Contig, Gene, Genome
+from homolocus import Contig, Gene, Genome, SkippedFeature, SkipReason
 
 
 def gene(contig_id: str, start: int, end: int) -> Gene:
@@ -72,3 +72,10 @@ def test_key_must_match_contig_id() -> None:
 def test_genome_needs_a_contig() -> None:
     with pytest.raises(ValueError, match="at least one contig"):
         Genome(contigs={})
+
+
+def test_genome_carries_skipped_features() -> None:
+    skipped = (SkippedFeature("c1", 0, 30, None, SkipReason.PSEUDOGENE),)
+    genome = Genome(contigs={"c1": contig("c1")}, skipped_features=skipped)
+    assert genome.skipped_features == skipped
+    assert Genome(contigs={"c1": contig("c1")}).skipped_features == ()

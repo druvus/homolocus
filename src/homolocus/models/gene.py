@@ -1,6 +1,6 @@
 """Protein-coding gene model (spec 4.1, 5.1)."""
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -57,3 +57,26 @@ class Gene:
     def length(self) -> int:
         """Length of the gene in base pairs."""
         return self.end - self.start
+
+
+def genomic_order(gene: Gene) -> tuple[int, int, int]:
+    """Sort key for genes on a contig: start, then end, then strand (spec 4)."""
+    return gene.start, gene.end, gene.strand
+
+
+def sorted_genes(
+    genes: Iterable[Gene], *, contig_id: str, start: int, end: int, label: str
+) -> tuple[Gene, ...]:
+    """Check genes lie on one contig within ``[start, end)`` with unique IDs; sort them.
+
+    ``label`` names the container in error messages.
+    """
+    checked = tuple(genes)
+    for gene in checked:
+        if gene.contig_id != contig_id:
+            raise ValueError(f"gene {gene.id} belongs to contig {gene.contig_id}, not {contig_id}")
+        if gene.start < start or gene.end > end:
+            raise ValueError(f"gene {gene.id} extends past the bounds of {label}")
+    if len({gene.id for gene in checked}) != len(checked):
+        raise ValueError(f"{label} has duplicate gene IDs")
+    return tuple(sorted(checked, key=genomic_order))

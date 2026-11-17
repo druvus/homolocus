@@ -169,6 +169,18 @@ Error policy **[DECIDED]**:
 - Missing or invalid `/translation` followed by a failed derived translation: `protein_sequence=None`, a warning, and the gene is recorded as untranslatable. Such a gene cannot be searched.
 - Internal stop codon in a translation: warning, and the CDS is treated as a pseudogene and excluded.
 - **[PROPOSED]** The internal-stop check applies to a translation derived by the package. A supplied `/translation` is trusted, except that one containing `*` is handled like an internal stop. `/transl_except` is not interpreted in v0.1.
+- **[PROPOSED]** A supplied `/translation` is invalid when it is empty or contains characters other than letters and `*`. An invalid one is ignored and the protein is derived instead.
+
+Derived translations **[DECIDED]**:
+
+- Translation starts at `/codon_start`. If the remaining length is not a multiple of 3, the incomplete last codon is dropped, the rest is translated, and a warning is issued. This applies to complete and partial CDS alike.
+- An alternative start codon of the translation table (e.g. GTG, TTG) is translated as `M` when the CDS is complete at its 5′ end and `/codon_start` is 1. Otherwise the first codon is translated literally.
+- One trailing stop is removed. Any other `*` is an internal stop.
+
+Reporting:
+
+- **[DECIDED]** Features excluded as pseudogenes (explicit or by internal stop) and compound CDS are recorded as `SkippedFeature` entries on the resulting `Genome` or `ReferenceRegion` (5.10), in addition to a warning. Untranslatable genes stay in the model with `protein_sequence=None`.
+- **[PROPOSED]** Warnings are summarised as one per contig, with counts by reason (skipped, untranslatable, trimmed). The details are in `skipped_features`.
 
 For FASTA input, Pyrodigal supplies the predicted CDS coordinates and protein translations.
 
@@ -255,6 +267,7 @@ class Genome:
     contigs: dict[str, Contig]
     name: str | None = None
     source: str | None = None
+    skipped_features: tuple[SkippedFeature, ...] = ()
 ```
 
 Preserve all contigs. Provide convenient access to genes across contigs. No assembly QC statistics.
@@ -271,6 +284,7 @@ class ReferenceRegion:
     genes: list[Gene]
     name: str | None = None
     source_genome: str | None = None
+    skipped_features: tuple[SkippedFeature, ...] = ()  # those inside the region
 ```
 
 Preserve original contig coordinates and orientation. Gene coordinates are not rebased. Include only fully contained CDS. Support both input modes.
@@ -360,6 +374,27 @@ The cluster is a result of detection, not a place to run DIAMOND.
 ### 5.9 Relationships
 
 The model supports many-to-many relationships: one reference protein to many target proteins (duplication or split), one target protein to many reference proteins (fusion or shared family), and many HSPs per pair. No forced one-to-one mapping and no mutually exclusive `match_type`. Higher-level events are derived from alignment evidence.
+
+### 5.10 SkippedFeature (new)
+
+A CDS feature excluded during annotation parsing (3.1, 3.2).
+
+```python
+class SkipReason(str, Enum):
+    PSEUDOGENE = "pseudogene"                # /pseudo or /pseudogene
+    INTERNAL_STOP = "internal_stop"          # treated as a pseudogene
+    COMPOUND_LOCATION = "compound_location"  # join(...), unsupported in v0.1
+
+@dataclass
+class SkippedFeature:
+    contig_id: str
+    start: int                    # internal 0-based half-open, whole location span
+    end: int
+    locus_tag: str | None
+    reason: SkipReason
+```
+
+Reported in `analysis.json` (14).
 
 ────────
 
@@ -774,6 +809,7 @@ homolocus/
 │   │   ├── contig.py
 │   │   ├── genome.py
 │   │   ├── reference.py
+│   │   ├── skipped_feature.py
 │   │   ├── gene_family.py
 │   │   ├── alignment.py
 │   │   ├── gene_match.py
@@ -781,7 +817,8 @@ homolocus/
 │   ├── annotation/
 │   │   ├── __init__.py
 │   │   ├── genbank.py
-│   │   └── prodigal.py
+│   │   ├── prodigal.py
+│   │   └── translation.py         # CDS translation rules (3.2), pure
 │   ├── search/
 │   │   ├── __init__.py
 │   │   └── diamond.py
@@ -857,6 +894,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 10. Pyrodigal training strategy for assemblies of 20 kb or more, 2.2.
 11. `edge_margin_bp` default of 500, section 10.
 12. Idempotent, deterministic output writing, section 14.
+13. Invalid supplied `/translation` definition and one summary warning per contig, 3.2.
 
 **Still open:**
 
@@ -906,6 +944,7 @@ Short definitions. The rules live in the referenced sections.
 | Partial gene | A gene truncated at a contig edge or marked partial. Kept and flagged (2.2). |
 | Pseudogene | A CDS annotated as a pseudogene or with an internal stop. Excluded entirely (3.1, 3.2). |
 | Untranslatable gene | A gene whose protein could not be obtained. Kept but not searchable (3.2, 8.1). |
+| Skipped feature | A CDS excluded during parsing (pseudogene, internal stop or compound location), recorded on the model (3.2, 5.10). |
 | HSP / Alignment | One DIAMOND high-scoring segment pair between a reference and a target protein (5.6). |
 | GeneMatch | All HSPs between one reference protein and one target protein, aggregated (5.7). |
 | Pair-level thresholds | E-value and identity filters applied to a GeneMatch. No coverage filter at this level (5.7, 6.2). |
