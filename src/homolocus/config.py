@@ -54,3 +54,28 @@ class DiamondSearch:
             raise ValueError(f"max_hsps {self.max_hsps} must not be negative")
         if self.threads is not None and self.threads < 1:
             raise ValueError(f"threads {self.threads} must be at least 1")
+
+
+@dataclass(frozen=True)
+class FamilyGrouping:
+    """Paralog family thresholds for the reference self-search (spec 7.6).
+
+    ``family_min_identity`` is a percentage; None disables grouping so every
+    gene is its own family. ``family_min_coverage`` is a fraction that both
+    proteins must reach.
+    """
+
+    family_min_identity: float | None = 90.0
+    family_min_coverage: float = 0.8
+
+    def __post_init__(self) -> None:
+        identity = self.family_min_identity
+        if identity is not None and not 0 <= identity <= 100:
+            raise ValueError(f"family_min_identity {identity} is not a percentage")
+        if not 0 <= self.family_min_coverage <= 1:
+            raise ValueError(f"family_min_coverage {self.family_min_coverage} is not a fraction")
+
+    @property
+    def enabled(self) -> bool:
+        """Whether paralogs are grouped at all."""
+        return self.family_min_identity is not None

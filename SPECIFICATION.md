@@ -307,7 +307,16 @@ class GeneFamily:
     representative_id: str        # earliest gene in the reference, for ordering
 ```
 
-Built from a reference self-search (7.6). Every searchable reference gene belongs to exactly one family. A gene with no paralogs is a family of one.
+Built from a reference self-search (7.6). Every searchable reference gene belongs to exactly one family. A gene with no paralogs is a family of one. Genes without a protein belong to no family. `gene_ids` are in genomic order and the representative is the first of them.
+
+```python
+@dataclass
+class ReferenceFamilies:
+    families: tuple[GeneFamily, ...]   # every searchable gene in exactly one family
+
+    def family_of(self, gene_id: str) -> GeneFamily: ...
+    def __len__(self) -> int: ...       # number of families, the reference-coverage denominator
+```
 
 ### 5.6 Alignment
 
@@ -550,6 +559,9 @@ Reference genes are grouped before the main search:
 - Search reference proteins against themselves with DIAMOND, excluding self-hits.
 - Two genes are linked when identity is at least `family_min_identity` (default 90) **and** both coverage values are at least `family_min_coverage` (**[PROPOSED]** default 0.8, to avoid grouping genes that share only a domain).
 - Families are connected components of that graph (**[PROPOSED]**).
+- **[DECIDED]** DIAMOND reports A→B and B→A separately. A and B are linked when either direction passes.
+- **[PROPOSED]** Identity and coverage come from the aggregated self-search `GeneMatch` (5.7). Thresholds are inclusive. No e-value condition is added beyond DIAMOND's `hsp_evalue`.
+- **[PROPOSED]** Family IDs are `F001`, `F002`, … numbered in genomic order of their representatives (3 digits, more beyond 999).
 - Configuration: `FamilyGrouping(family_min_identity=90, family_min_coverage=0.8)`. Setting `family_min_identity=None` disables grouping, so every gene is its own family.
 
 Effects:
@@ -921,6 +933,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 14. Pyrodigal meta mode restricted to table-11 models, and training only when a contig is at least 20 kb, 2.2.
 15. Inclusive pair-level threshold comparisons, 5.7.
 16. DIAMOND token prefixes `r`/`t`, minimum DIAMOND 2.0, and deterministic sorting of parsed alignments, 4.1, 6.2, 6.4.
+17. Family linking from aggregated self-search evidence with inclusive thresholds, and family ID numbering, 7.6.
 
 **Still open:**
 
