@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from homolocus.config import DiamondSearch, RegionDetection, ScoringWeights
 from homolocus.detection.candidate_generation import EventWindow, padded_interval, windows
-from homolocus.detection.flags import touches_contig_edge
+from homolocus.detection.flags import fusion_events, split_events, touches_contig_edge
 from homolocus.detection.matching import matching_events
 from homolocus.detection.scoring import FamilyPairing, components
 from homolocus.intervals import union_length
@@ -172,6 +172,8 @@ def evaluate_window(
         touches_contig_edge=touches_contig_edge(
             window, contig, edge_margin_bp=detection.edge_margin_bp
         ),
+        splits=split_events(contig, passing, detection),
+        fusions=fusion_events(contig, passing, context.families, detection),
     )
 
 
