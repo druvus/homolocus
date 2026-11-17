@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from homolocus import DiamondSearch
+from homolocus import DiamondSearch, FamilyGrouping
 
 
 def test_defaults_match_the_specification() -> None:
@@ -53,3 +53,36 @@ def test_boundary_values_are_allowed(overrides: dict[str, Any]) -> None:
 def test_invalid_settings_are_rejected(overrides: dict[str, Any], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         DiamondSearch(**overrides)
+
+
+def test_family_grouping_defaults() -> None:
+    config = FamilyGrouping()
+    assert (config.family_min_identity, config.family_min_coverage) == (90.0, 0.8)
+
+
+@pytest.mark.parametrize(
+    ("identity", "coverage"),
+    [(None, 0.8), (0.0, 0.0), (100.0, 1.0)],
+)
+def test_family_grouping_boundaries_are_allowed(identity: float | None, coverage: float) -> None:
+    config = FamilyGrouping(family_min_identity=identity, family_min_coverage=coverage)
+    assert (config.family_min_identity, config.family_min_coverage) == (identity, coverage)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"family_min_identity": -0.1}, "family_min_identity"),
+        ({"family_min_identity": 100.1}, "family_min_identity"),
+        ({"family_min_coverage": -0.01}, "family_min_coverage"),
+        ({"family_min_coverage": 1.01}, "family_min_coverage"),
+    ],
+)
+def test_invalid_family_grouping_is_rejected(overrides: dict[str, Any], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        FamilyGrouping(**overrides)
+
+
+def test_grouping_is_disabled_when_identity_is_none() -> None:
+    assert not FamilyGrouping(family_min_identity=None).enabled
+    assert FamilyGrouping().enabled

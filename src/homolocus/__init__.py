@@ -1,6 +1,6 @@
 """Find homologous genomic regions in bacterial genomes."""
 
-from homolocus.config import DiamondSearch
+from homolocus.config import DiamondSearch, FamilyGrouping
 from homolocus.models.alignment import Alignment
 from homolocus.models.contig import Contig
 from homolocus.models.gene import Gene, Strand
@@ -13,6 +13,7 @@ __all__ = [
     "Alignment",
     "Contig",
     "DiamondSearch",
+    "FamilyGrouping",
     "Gene",
     "GeneMatch",
     "Genome",
