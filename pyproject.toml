@@ -1,0 +1,91 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "homolocus"
+version = "0.1.0"
+description = "Find homologous genomic regions in bacterial genomes from the proteins of a reference region, tolerant of gene loss, insertions, duplications and rearrangements."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+# authors = [{ name = "Your Name" }]
+keywords = ["bioinformatics", "genomics", "bacteria", "homology", "synteny", "pathogenicity island"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    "biopython",
+    "pandas",
+    "matplotlib",
+    "pyrodigal",
+]
+
+# [project.urls]
+# Homepage = "https://github.com/<user>/homolocus"
+# Issues = "https://github.com/<user>/homolocus/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "hypothesis",
+    "ruff",
+    "mypy",
+]
+
+[project.scripts]
+homolocus = "homolocus.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/homolocus"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "diamond: test requires the DIAMOND executable",
+]
+
+[tool.coverage.run]
+source = ["homolocus"]
+branch = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle, pyflakes
+    "I",             # import sorting
+    "B",             # bugbear
+    "UP",            # pyupgrade
+    "SIM",           # simplifications
+    "C4",            # comprehensions
+    "N",             # naming
+    "PL",            # pylint
+    "RET",           # return consistency
+    "PT",            # pytest style
+]
+ignore = ["PLR2004"]  # magic values are common in test data
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR0913", "PLR0915"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["Bio.*", "pyrodigal.*", "pandas.*", "matplotlib.*"]
+ignore_missing_imports = true

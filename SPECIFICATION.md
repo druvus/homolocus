@@ -1,0 +1,866 @@
+# Genomic Region — v0.1 Specification
+
+Status: Working specification (revision 2)
+Package name: `genomic-region`
+Python: 3.10+
+Build backend: Hatchling
+Primary use case: Identify and visualize a homologous genomic region in a bacterial genome using the proteins encoded by a reference region.
+
+## 0. Decision status and conventions
+
+Every behaviour-affecting statement carries one of three tags where it matters:
+
+- **[DECIDED]** Confirmed by the user.
+- **[PROPOSED]** Default suggested during design, not yet explicitly confirmed. Implement as written, but keep it easy to change, and list it in the first review.
+- **[OPEN]** Not settled. Do not resolve silently. Record a proposed default, and ask when the choice materially affects behaviour.
+
+Untagged text carries over from revision 1, which the user accepted.
+
+### 0.1 Decision log (revision 2)
+
+| # | Topic | Decision |
+|---|-------|----------|
+| 1 | Duplicated target homologues in candidate generation | **[DECIDED]** Each copy is a separate matching event for distance calculations. All copies are retained in reconstruction and scoring. |
+| 2 | Where coverage thresholds apply | **[DECIDED]** Two levels. Pair level filters on e-value and identity only. Coverage is evaluated at reference-gene level as a union over target proteins. |
+| 3 | User-facing coordinates | **[DECIDED]** 1-based, inclusive in CLI, API inputs, TSV and plots. Internally 0-based half-open. Conversion only in the I/O layer. |
+| 4 | Candidate grouping | **[DECIDED]** Single-linkage chains on the distance limits. Chains longer than `max_region_bp` are split into overlapping windows, then deduplicated. |
+| 5 | Gene ID scheme | **[DECIDED]** `{contig_id}\|{start_1based}-{end_1based}\|{strand_char}`, e.g. `NC_000913.3\|1900001-1901200\|+`. `locus_tag` is metadata only. |
+| 6 | Circular genomes and compound CDS | **[DECIDED]** Not supported in v0.1. Contigs are treated as linear. CDS with compound (`join`) locations are skipped with a warning. |
+| 7 | `auto` annotation | **[DECIDED]** GenBank with at least one CDS is used as is. GenBank without CDS and FASTA use Pyrodigal. Contigs under 20 kb use meta mode. Partial genes at contig edges are flagged. |
+| 8 | Translation errors | **[DECIDED]** See 3.2. |
+| 9 | Paralogous reference genes | **[DECIDED]** Reference genes in one family (self-search, identity at or above 90 %) count as one unit in reference coverage. A fusion requires distinct families. |
+| 10 | Scoring | **[DECIDED]** Simple weighted sum with visible components. Starting weights 0.40 / 0.30 / 0.15 / 0.10 / 0.05, configurable and not validated. |
+
+### 0.2 Units
+
+- **[PROPOSED]** Identity is a percentage (0–100), as in DIAMOND output. All coverage values are fractions (0–1).
+- Earlier examples used `min_query_coverage=50`. Those parameters are replaced as described in 6.2.
+
+────────
+
+## 1. Purpose and scope
+
+The package takes a reference genomic region and a target genome assembly. It identifies proteins in the target genome homologous to proteins encoded in the reference region, then detects candidate genomic regions containing a related collection of proteins.
+
+The approach must not depend on predefined flanking genes. The reference region is characterized primarily by its protein content. Gene order and orientation provide supporting evidence, but neither is an absolute requirement.
+
+The package should tolerate:
+
+- Missing reference genes.
+- Insertions of unrelated genes.
+- Gene duplications and multiple homologues.
+- Rearrangements in gene order.
+- Reverse-oriented versions of the region in the target genome.
+- Potential split proteins and fused proteins (detected and flagged in v0.1).
+- Repeated reference gene families such as IS-element transposases (see 7.6).
+
+The principal example is an E. coli pathogenicity island (PAI), but the package is intended for bacterial genomes more generally.
+
+### v0.1 goals
+
+- Parse reference and target genome input.
+- Annotate target FASTA input with Pyrodigal when needed.
+- Group paralogous reference proteins into families.
+- Search reference proteins against target proteins using DIAMOND.
+- Generate candidate regions independently on each contig.
+- Rank all candidates passing configurable detection thresholds.
+- Produce Matplotlib plots, including multiple candidates as separate lines.
+- Provide both a Python API and a CLI.
+
+### Explicitly out of scope for v0.1
+
+- GFF input.
+- Non-CDS feature modelling (RNA genes, etc.).
+- Pseudogene retention.
+- CDS with compound (`join`) locations, and features wrapping the origin of a circular contig.
+- Combining matches from different contigs into one candidate.
+- Interactive plotting.
+- Saving and reloading a serialized analysis/results object.
+- Full reconstruction of split/fused protein architecture.
+- General assembly QC statistics such as N50 and GC content.
+
+────────
+
+## 2. Input formats
+
+### 2.1 Reference input
+
+Primary mode: a complete GenBank genome record plus a contig identifier and region coordinates.
+
+```python
+reference = ReferenceRegion.from_genbank(
+    "ecoli.gb",
+    contig="NC_000913.3",
+    start=1_900_000,   # 1-based, inclusive  [DECIDED]
+    end=1_920_000,     # 1-based, inclusive
+)
+```
+
+Alternative mode: a GenBank file containing only the reference region. The record sequence boundaries define the region.
+
+```python
+reference = ReferenceRegion.from_genbank("ecoli_pai.gbk")
+```
+
+Rules:
+
+- Reference region boundaries are independent of gene boundaries.
+- Only CDS features completely contained within the requested region are included. A CDS overlapping either region boundary is excluded.
+- CDS with compound locations are skipped with a warning and listed in the run metadata.
+- The reference sequence and gene coordinates retain the original contig orientation. The package does not reverse-complement or reorient the reference region.
+- Reference genes with `protein_sequence=None` stay in the model but cannot be searched. They are excluded from the reference-coverage denominator and reported separately (8.1).
+
+### 2.2 Target genome input
+
+The target is one assembly per analysis. The assembly may contain one or more contigs.
+
+Supported inputs for v0.1:
+
+- GenBank (`.gb`, `.gbk`): use the supplied CDS annotations.
+- FASTA (`.fa`, `.fasta`, `.fna`): run Pyrodigal to predict protein-coding genes.
+
+```python
+genome = Genome.from_file("target.gbk", annotation="auto")
+genome = Genome.from_file("target.fna", annotation="auto")
+```
+
+`auto` behaviour **[DECIDED]**:
+
+- GenBank input with at least one CDS feature: use the supplied annotation. Do not run Pyrodigal.
+- GenBank input with no CDS features, and all FASTA input: run Pyrodigal.
+- Pyrodigal mode: contigs shorter than 20 kb use meta mode. Training details for longer contigs (single genome training on the whole assembly vs. per contig) are **[PROPOSED]**: train once on the whole assembly when it totals at least 20 kb. Translation table 11.
+- Partial genes at contig edges (Pyrodigal partial flags, or `<`/`>` in GenBank locations) are kept and flagged (`Gene.partial`).
+
+GFF is not supported in v0.1.
+
+### 2.3 Multiple contigs
+
+`Genome` represents an assembly containing one or more contigs.
+
+All contigs must be preserved, including contigs with no CDS. Candidate generation and region detection operate independently on each contig. Matches on different contigs are never combined into one candidate in v0.1.
+
+All contigs are treated as linear **[DECIDED]**.
+
+────────
+
+## 3. Annotation rules
+
+### 3.1 CDS-only model
+
+For v0.1, `Gene` represents protein-coding CDS features only.
+
+- RNA genes and other feature types are not represented.
+- Explicitly annotated pseudogenes are excluded entirely (`/pseudo`, `/pseudogene`).
+- Excluded pseudogenes are not in protein FASTA files, DIAMOND searches, gene counts or scoring.
+- CDS with compound locations are skipped with a warning **[DECIDED]**.
+
+### 3.2 Protein translation
+
+For GenBank CDS features:
+
+- Use `/translation` when available.
+- If `/translation` is absent, derive the protein from the CDS nucleotide sequence.
+- Respect `/transl_table` (default: bacterial table 11) and `/codon_start` (default 1).
+- Handle reverse-strand CDS correctly.
+- Use the CDS nucleotide sequence in coding orientation (5′ to 3′).
+
+Error policy **[DECIDED]**:
+
+- Missing or invalid `/translation` followed by a failed derived translation: `protein_sequence=None`, a warning, and the gene is recorded as untranslatable. Such a gene cannot be searched.
+- Internal stop codon in a translation: warning, and the CDS is treated as a pseudogene and excluded.
+- **[PROPOSED]** The internal-stop check applies to a translation derived by the package. A supplied `/translation` is trusted, except that one containing `*` is handled like an internal stop. `/transl_except` is not interpreted in v0.1.
+
+For FASTA input, Pyrodigal supplies the predicted CDS coordinates and protein translations.
+
+Tests must cover internal stops, partial CDS features and non-standard `/codon_start`.
+
+────────
+
+## 4. Coordinate and orientation conventions
+
+Internal models **[DECIDED]**:
+
+- Coordinates are 0-based, half-open: `[start, end)`.
+- `strand` is +1 or -1.
+- Gene coordinates refer to the original contig.
+- Gene nucleotide sequences are stored in coding orientation.
+- Contig sequences remain in their original genomic orientation.
+- Genes within a contig are sorted by genomic start coordinate, irrespective of strand.
+
+User-facing coordinates **[DECIDED]**:
+
+- Everything the user types or reads is 1-based and inclusive: `ReferenceRegion.from_genbank(start=, end=)`, CLI `--start/--end`, TSV columns, plot axes and labels.
+- Conversion happens only in the I/O layer. Helper functions live in one module (`coordinates.py`) with tests.
+- DIAMOND coordinates (1-based inclusive) are converted to the internal convention when parsed. The raw DIAMOND file is preserved unchanged.
+
+The region detection algorithm must find the reference region even if its orientation in the target genome is reversed. Do not require matching absolute strand orientation.
+
+### 4.1 Gene IDs [DECIDED]
+
+- Canonical ID: `{contig_id}|{start_1based}-{end_1based}|{strand_char}`, with `+` or `-`.
+- `locus_tag`, `gene_name` and `protein_id` are metadata and never used as keys.
+- **[PROPOSED]** DIAMOND FASTA headers use short sequential tokens (`g000001`), with a stored mapping back to canonical IDs. This avoids problems with special characters in contig IDs. It is an implementation detail with no behavioural effect.
+
+────────
+
+## 5. Data models
+
+Exact field names and validation can be refined during implementation.
+
+### 5.1 Gene
+
+```python
+@dataclass
+class Gene:
+    id: str                       # canonical ID, see 4.1
+    contig_id: str
+
+    start: int                    # 0-based, inclusive
+    end: int                      # exclusive
+    strand: int
+
+    nucleotide_sequence: str      # coding orientation
+    protein_sequence: str | None
+
+    gene_name: str | None = None
+    product: str | None = None
+    locus_tag: str | None = None
+    protein_id: str | None = None
+    partial: bool = False         # partial at a contig edge or marked partial
+    qualifiers: dict = field(default_factory=dict)
+
+    @property
+    def length(self) -> int:
+        return self.end - self.start
+```
+
+### 5.2 Contig
+
+```python
+@dataclass
+class Contig:
+    id: str
+    sequence: str
+    genes: list[Gene]
+    description: str | None = None
+```
+
+Preserve contigs without genes. Sort genes by start. Provide `length` and `n_genes`.
+
+### 5.3 Genome
+
+```python
+@dataclass
+class Genome:
+    contigs: dict[str, Contig]
+    name: str | None = None
+    source: str | None = None
+```
+
+Preserve all contigs. Provide convenient access to genes across contigs. No assembly QC statistics.
+
+### 5.4 ReferenceRegion
+
+```python
+@dataclass
+class ReferenceRegion:
+    contig_id: str
+    start: int                    # internal 0-based half-open
+    end: int
+    sequence: str
+    genes: list[Gene]
+    name: str | None = None
+    source_genome: str | None = None
+```
+
+Preserve original contig coordinates and orientation. Gene coordinates are not rebased. Include only fully contained CDS. Support both input modes.
+
+### 5.5 GeneFamily (new)
+
+```python
+@dataclass
+class GeneFamily:
+    id: str                       # e.g. "F001"
+    gene_ids: list[str]           # reference gene IDs
+    representative_id: str        # earliest gene in the reference, for ordering
+```
+
+Built from a reference self-search (7.6). Every searchable reference gene belongs to exactly one family. A gene with no paralogs is a family of one.
+
+### 5.6 Alignment
+
+One DIAMOND HSP.
+
+```python
+@dataclass
+class Alignment:
+    query_id: str
+    subject_id: str
+
+    identity: float
+    alignment_length: int
+
+    query_start: int              # 0-based half-open, internal
+    query_end: int
+    subject_start: int
+    subject_end: int
+
+    query_length: int
+    subject_length: int
+
+    evalue: float
+    bit_score: float
+```
+
+Keep HSPs separate. Preserve coordinates and lengths. Retain enough evidence to calculate query and subject coverage and identify discontinuous matches.
+
+### 5.7 GeneMatch
+
+Aggregated evidence between one reference protein and one target protein.
+
+```python
+@dataclass
+class GeneMatch:
+    reference_gene_id: str
+    target_gene_id: str
+    alignments: list[Alignment]
+
+    query_coverage: float         # fraction of reference protein, union of HSPs
+    subject_coverage: float       # fraction of target protein, union of HSPs
+    identity: float               # alignment-length-weighted, percent
+    bit_score: float              # sum over HSPs
+```
+
+Aggregation:
+
+1. Collect all HSPs for a query-subject pair.
+2. Union of aligned query positions. Union of aligned subject positions.
+3. Query and subject coverage from those unions, without double-counting overlaps.
+4. Alignment-length-weighted identity.
+5. Sum of bit scores.
+6. Pair-level thresholds (e-value, identity) are evaluated on the aggregated evidence. No coverage threshold is applied at pair level **[DECIDED]**.
+
+### 5.8 Cluster
+
+One candidate genomic region on one target contig.
+
+Retain:
+
+- Target contig ID and candidate start/end (internal 0-based half-open).
+- Target genes in the interval, each tagged as matched or additional.
+- All relevant `GeneMatch` objects.
+- Families represented and missing.
+- Score and `ScoreComponents` (section 8).
+- Reference-gene-level coverage per family (8.1).
+- Flags: potential split, potential fusion, contains partial genes, touches contig edge.
+- Number of duplicated homologue copies per family.
+
+The cluster is a result of detection, not a place to run DIAMOND.
+
+### 5.9 Relationships
+
+The model supports many-to-many relationships: one reference protein to many target proteins (duplication or split), one target protein to many reference proteins (fusion or shared family), and many HSPs per pair. No forced one-to-one mapping and no mutually exclusive `match_type`. Higher-level events are derived from alignment evidence.
+
+────────
+
+## 6. Protein homology search
+
+### 6.1 Backend
+
+DIAMOND is the default and only backend in v0.1. It is an external executable: check availability at runtime and give a clear error. Pyrodigal is a mandatory Python dependency. The search code lives in its own module so detection does not depend on DIAMOND-specific structures.
+
+### 6.2 Configuration
+
+Pair-level and reference-gene-level thresholds are separate **[DECIDED]**.
+
+```python
+search = DiamondSearch(
+    evalue=1e-5,
+    min_identity=30,            # percent, on aggregated GeneMatch identity
+    sensitivity="sensitive",
+    max_target_seqs=100,
+    max_hsps=0,                 # explicit; 0 = report all HSPs per pair
+)
+```
+
+- `min_query_coverage` and `min_subject_coverage` are removed from the search configuration.
+- **Do not use DIAMOND's own `--query-cover`, `--subject-cover` or `--id` filters.** They act per HSP and would contradict the aggregation rule. Filter in Python after aggregation.
+- Always pass `--max-hsps` and `-k` explicitly and verify behaviour against the installed DIAMOND version. Do not rely on defaults.
+- Protein-level evidence stays distinct from region-level confidence.
+- All values are provisional and not empirically validated.
+
+### 6.3 Retaining hits and HSPs
+
+- Retain multiple target hits per reference protein. Do not keep only the best.
+- Retain multiple HSPs per query-subject pair.
+- `max_target_seqs` limits target sequences reported per query. It is not the number of HSPs per pair. Record the configured limit in the run metadata. Add a test that a query with more hits than the limit behaves as documented.
+
+### 6.4 DIAMOND tabular fields [PROPOSED]
+
+```
+qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen
+```
+
+- Raw output is written unchanged to `alignments/diamond.tsv`.
+- Coordinates are converted from 1-based inclusive when parsed.
+
+### 6.5 Searches performed
+
+1. Reference proteins against target proteins (main search).
+2. Reference proteins against themselves (family grouping, 7.6). Self-hits are excluded.
+
+Genes with `protein_sequence=None` are excluded from both.
+
+────────
+
+## 7. Candidate generation and region detection
+
+### 7.1 Stages
+
+1. Family grouping of reference genes (7.6).
+2. Matching events: target genes eligible to seed candidates (7.2).
+3. Candidate generation: chains and windows on each contig (7.3).
+4. Candidate evaluation: coverage, scoring and flags (7.7, section 8, section 9).
+
+No predefined flanking genes. Each contig is processed independently.
+
+### 7.2 Matching events [DECIDED rule, PROPOSED default]
+
+A target gene is a matching event if it has at least one `GeneMatch` passing pair-level thresholds **and** that match satisfies:
+
+```
+query_coverage >= min_event_coverage   OR   subject_coverage >= min_event_coverage
+```
+
+- The OR admits split fragments (high subject coverage, low query coverage) and fused proteins (high query coverage, low subject coverage), while excluding short shared-domain hits.
+- `min_event_coverage` default **[PROPOSED]**: 0.5.
+- Weak matches below the event threshold still remain in the evidence stored in the cluster, if the gene lies inside a candidate.
+
+### 7.3 Chains and windows [DECIDED]
+
+On each contig, take matching events sorted by genomic position.
+
+**Chains.** Consecutive events are linked when both hold:
+
+- Intervening genes (genes between them in the contig's sorted gene list) at most `max_intervening_genes`.
+- Base-pair gap (start of the next event minus end of the previous, minimum 0 for overlapping genes) at most `max_inter_match_bp_gap`.
+
+Linked events form a chain (single linkage). Each duplicated copy is its own event **[DECIDED]**.
+
+**Windows.** If a chain's span (start of first event to end of last event) is at most `max_region_bp`, the chain is one candidate. Otherwise, split it into windows:
+
+- For each event as the left anchor, extend right while the span stays at most `max_region_bp`.
+- Discard windows whose set of events is a subset of another window's.
+
+**Evaluation and deduplication.**
+
+- Each chain or window is evaluated independently (7.7).
+- Candidates that fail `min_matches` or `min_reference_coverage` are discarded.
+- **[PROPOSED]** After ranking, a candidate whose span overlaps a higher-ranked candidate on the same contig by more than `max_candidate_overlap` (default 0.5, fraction of the shorter span) is discarded as an alternative window of the same locus. Set to 1.0 to keep all.
+
+### 7.4 Duplicated homologues [DECIDED]
+
+Each copy is a separate matching event for distance calculations. Reconstruction and scoring retain all copies. For order and orientation scoring, a family uses its best copy in the candidate (highest bit score). Which copy that is must be recorded.
+
+```
+Reference: A - B - C - D
+Target:    A - B1 - X - B2 - C - D   (B1 and B2 both retained; X counted as intervening)
+```
+
+### 7.5 Detection configuration
+
+```python
+detection = RegionDetection(
+    min_matches=3,                    # distinct represented families (>= 2)
+    min_reference_coverage=0.3,       # fraction of families
+    min_reference_gene_coverage=0.5,  # per-family combined coverage to count as represented
+    min_event_coverage=0.5,
+    max_intervening_genes=10,
+    max_inter_match_bp_gap=20_000,
+    max_region_bp=50_000,
+    max_candidate_overlap=0.5,
+    padding_genes=0,
+    padding_bp=0,
+)
+```
+
+- All values are provisional and configurable.
+- `min_matches` counts distinct represented families, never copies. It must be at least 2, because order and orientation need at least two points.
+- **[PROPOSED]** Both `min_matches` and `min_reference_coverage` must hold (AND). Validate that `min_matches` does not exceed the number of families, with a clear error.
+- Distance concepts remain distinct: intervening genes, base-pair gap between consecutive events, total span.
+
+### 7.6 Paralogous reference families [DECIDED]
+
+Reference genes are grouped before the main search:
+
+- Search reference proteins against themselves with DIAMOND, excluding self-hits.
+- Two genes are linked when identity is at least `family_min_identity` (default 90) **and** both coverage values are at least `family_min_coverage` (**[PROPOSED]** default 0.8, to avoid grouping genes that share only a domain).
+- Families are connected components of that graph (**[PROPOSED]**).
+- Configuration: `FamilyGrouping(family_min_identity=90, family_min_coverage=0.8)`. Setting `family_min_identity=None` disables grouping, so every gene is its own family.
+
+Effects:
+
+- `reference_coverage`, `min_matches` and the order/orientation score count a family once.
+- A target gene matching several members of one family is not a fusion.
+- Family members all remain in the output. The member with the best bit score to a given target gene is used for display. All `GeneMatch` objects are kept.
+- Plots colour by family (section 11).
+
+### 7.7 Reference-gene-level coverage and "represented" [DECIDED]
+
+For a candidate and a reference gene R:
+
+- Take all target genes in the candidate that have a `GeneMatch` to R passing pair-level thresholds.
+- Coverage of R is the union of aligned reference positions across those target proteins, divided by R's length. No double counting.
+- A family is represented when the best coverage among its member genes is at least `min_reference_gene_coverage`.
+- This lets several split fragments jointly represent one reference protein.
+
+### 7.8 Gene order
+
+Gene order is supporting evidence, not a requirement. Rearrangements do not disqualify a candidate. Do not implement rigid global synteny alignment as the only method. Order and orientation scores are reversal-invariant (section 8).
+
+### 7.9 Multiple candidates
+
+Return all candidates passing thresholds, ranked by composite score (ties: higher reference coverage, then lower contig start). Do not return only the top one. Candidates on separate contigs remain separate.
+
+────────
+
+## 8. Candidate scoring [DECIDED: simple weighted sum]
+
+Composite score in `[0, 1]`:
+
+```
+score = w_content*content + w_similarity*similarity + w_order*order
+      + w_orientation*orientation + w_spacing*spacing
+```
+
+Default weights **[DECIDED start values, not validated]**:
+
+| Component | Weight |
+|-----------|--------|
+| content | 0.40 |
+| similarity | 0.30 |
+| order | 0.15 |
+| orientation | 0.10 |
+| spacing | 0.05 |
+
+```python
+ScoringWeights(content=0.40, similarity=0.30, order=0.15, orientation=0.10, spacing=0.05)
+```
+
+Weights must be non-negative and are normalized to sum to 1. Gene content and protein similarity carry the most weight. All components are exposed on the cluster as `ScoreComponents`, never just the single score.
+
+Component definitions **[PROPOSED]**, each in `[0, 1]`:
+
+- **content** = `reference_coverage`: represented families / total families (families with at least one searchable gene).
+- **similarity** = mean over represented families of `identity/100 × coverage`, using the best member and best copy (identity from the aggregated `GeneMatch`, coverage from 7.7).
+- **order**: take represented families in reference order and the best copy of each in target order. order = longest monotonic subsequence (increasing or decreasing, whichever is longer) divided by number of represented families. A fully reversed region scores 1.
+- **orientation**: for each pair of neighbouring represented families in reference order, check whether their relative strand (same or opposite) in the target equals that in the reference. orientation = fraction of agreeing pairs. Reversal-invariant.
+- **spacing**: `min(a, b) / max(a, b)`, where `a` is the unpadded candidate span and `b` is the reference span from the first to the last represented family. It penalizes large insertions or compression.
+
+How missing genes, insertions, duplications, splits and fusions affect the score:
+
+- Missing genes lower content (and similarity indirectly).
+- Insertions lower spacing only.
+- Duplicate copies are not penalized.
+- Split and fusion events do not alter the score in v0.1. They are reported as flags. A split reference gene still counts as represented through combined coverage (7.7).
+
+### 8.1 Coverage metrics
+
+Kept separate:
+
+- `reference_coverage`: represented families / total families.
+- `mean_protein_coverage`: mean 7.7 coverage across represented families.
+- Reference genes without a protein are excluded from the denominator and reported in the run metadata as `reference_genes_without_protein`.
+
+### 8.2 Missing and additional genes
+
+- Missing reference genes are allowed and reported (as missing families, listing member genes).
+- Additional target genes between matched genes are retained.
+- Neither automatically disqualifies a candidate beyond the detection rules.
+
+────────
+
+## 9. Split proteins, fused proteins and duplications
+
+### 9.1 Duplications
+
+Retain all homologous copies. Never discard a copy because another scored better. Preserve all target genes and match relationships.
+
+### 9.2 Potential splits
+
+Detect and flag only. A potential split: multiple target proteins align to complementary portions of one reference protein.
+
+- Compute the union of aligned reference positions across the target proteins.
+- Count that union toward 7.7 coverage.
+- Preserve individual target proteins and alignments.
+
+```
+Reference protein B:  |------------------------|
+Target protein B1:    |----------|
+Target protein B2:               |-------------|
+```
+
+### 9.3 Potential fusions
+
+Detect and flag only. A potential fusion: one target protein aligns to different portions of reference proteins from **different families** (7.6).
+
+- Coverage is calculated independently per reference protein.
+- Matching several members of the same family is not a fusion.
+- Be careful to distinguish fusions from proteins sharing a common domain.
+
+### 9.4 Heuristics [OPEN, with proposed defaults]
+
+Thresholds need validation on real data. Proposed starting values, all configurable:
+
+- **Split flag**: at least 2 target genes in the candidate each contribute at least 20 % of the reference protein's length not already covered by the others (unique contribution), their pairwise overlap is at most 20 % of the shorter alignment, and the union reaches `min_reference_gene_coverage`.
+- **Fusion flag**: one target gene has non-overlapping alignments (overlap at most 20 % of the shorter) to at least 2 different families, each covering at least 20 % of the target protein's length.
+- Neighbouring orientation and adjacency of fragments are recorded but not required in v0.1.
+
+────────
+
+## 10. Candidate boundaries and padding
+
+- Boundaries are the outermost matching events of the chain or window, not predefined flanking genes. With zero padding, the candidate runs from the start of the first matched gene to the end of the last matched gene.
+- All intervening genes, including unrelated insertions, are retained.
+- Padding options: `padding_genes` and `padding_bp`, default 0. If both are given, the larger resulting extent is used **[PROPOSED]**. Padding is clipped to the contig ends.
+- **[PROPOSED]** `max_region_bp` is checked against the **unpadded** span. Padding is added afterwards and affects the reconstructed/displayed interval only, not the evidence used for detection.
+- A candidate's `touches_contig_edge` flag is set when its first or last matched gene is partial or lies within `edge_margin_bp` of the contig end (**[PROPOSED]** default 500). It signals possible truncation by assembly fragmentation.
+
+────────
+
+## 11. Visualization
+
+Matplotlib only in v0.1.
+
+### 11.1 Overview plot
+
+- Reference region as the top line, each candidate on its own line.
+- Gene arrows show strand.
+- Genes in the same reference **family** share a colour across lines **[DECIDED]** (paralog members share a colour).
+- Missing families are shown in neutral grey. Additional target genes use a neutral colour.
+- Candidate score, reference coverage and flags (split, fusion, edge) are shown.
+- Contig IDs and 1-based genomic coordinates are shown.
+- Gene labels where practical.
+- Actual genomic orientation is shown. Target regions are not silently reoriented.
+
+### 11.2 Individual candidate plot
+
+Detailed plot for a single candidate, showing every copy and the score components.
+
+### 11.3 Responsibilities
+
+Plotting consumes `Cluster` and result models. It never reruns searches or detection.
+
+────────
+
+## 12. Python API
+
+```python
+from genomic_region import Genome, ReferenceRegion, RegionFinder
+
+reference = ReferenceRegion.from_genbank(
+    "ecoli.gb", contig="NC_000913.3", start=1_900_000, end=1_920_000,
+)
+genome = Genome.from_file("target.fna", annotation="auto")
+
+finder = RegionFinder(reference=reference)       # accepts search, detection, family, scoring configs
+results = finder.find(genome)
+
+results.candidates
+results.best_candidate
+results.to_dataframe()
+results.plot()
+```
+
+The API exposes intermediate models (alignments, matches, families, candidates, score components). The exact signatures stay provisional. No save/load of results in v0.1.
+
+**[OPEN]** `to_dataframe()` granularity (one row per candidate vs. per gene). Proposed: per candidate by default, `results.genes_dataframe()` for gene-level rows.
+
+────────
+
+## 13. CLI
+
+A thin wrapper over the Python API with no duplicated logic.
+
+```
+genomic-region find \
+    --reference ecoli.gb --contig NC_000913.3 --start 1900000 --end 1920000 \
+    --genome target.fna --output results/
+```
+
+```
+genomic-region find --reference ecoli_pai.gbk --genome target.gbk --output results/
+```
+
+`--start` and `--end` are 1-based inclusive. The CLI exposes DIAMOND thresholds, `max_target_seqs`, detection thresholds, family grouping, scoring weights and padding. A configuration file is not required in v0.1.
+
+────────
+
+## 14. Outputs
+
+```
+results/
+├── summary.tsv
+├── candidates/
+│   ├── candidate_001.tsv
+│   └── ...
+├── plots/
+│   ├── regions.png
+│   ├── candidate_001.png
+│   └── ...
+├── alignments/
+│   ├── diamond.tsv             # raw main search
+│   └── reference_self.tsv      # raw self search (families)
+└── analysis.json
+```
+
+- All coordinates in files are 1-based inclusive.
+- `analysis.json` holds run metadata only: parameters, tool versions, thresholds, warnings, skipped features (pseudogenes, compound CDS, untranslatable genes), `reference_genes_without_protein`, and the reference families. It is **not** a reloadable results object.
+- **[PROPOSED]** `summary.tsv` columns: `rank, candidate_id, contig, start, end, span_bp, score, content, similarity, order, orientation, spacing, reference_coverage, mean_protein_coverage, n_target_genes, n_matched_genes, n_missing_families, flags`.
+- **[PROPOSED]** Candidate TSV columns: `target_gene_id, locus_tag, product, start, end, strand, role (matched|additional), reference_gene_id, family_id, identity, query_coverage, subject_coverage, bit_score, is_best_copy, flags`.
+
+────────
+
+## 15. Dependencies and packaging
+
+```toml
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "genomic-region"
+version = "0.1.0"
+description = "Reference-guided genomic region reconstruction and visualization"
+requires-python = ">=3.10"
+dependencies = ["biopython", "pandas", "matplotlib", "pyrodigal"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[project.scripts]
+genomic-region = "genomic_region.cli:main"
+```
+
+- Mandatory: Biopython, pandas, Matplotlib, Pyrodigal.
+- DIAMOND is an external executable checked at runtime.
+- Tests needing DIAMOND are marked and skipped with a clear message when it is absent.
+- Version pinning and platform notes are decided during implementation.
+
+────────
+
+## 16. Package structure
+
+```
+genomic-region/
+├── pyproject.toml
+├── README.md
+├── SPECIFICATION.md
+├── AGENTS.md
+├── src/genomic_region/
+│   ├── __init__.py
+│   ├── cli.py
+│   ├── finder.py
+│   ├── config.py                  # DiamondSearch, RegionDetection, FamilyGrouping, ScoringWeights
+│   ├── coordinates.py             # 0-based half-open <-> 1-based inclusive
+│   ├── models/
+│   │   ├── gene.py
+│   │   ├── contig.py
+│   │   ├── genome.py
+│   │   ├── reference.py
+│   │   ├── gene_family.py
+│   │   ├── alignment.py
+│   │   ├── gene_match.py
+│   │   └── cluster.py
+│   ├── annotation/
+│   │   ├── genbank.py
+│   │   └── prodigal.py
+│   ├── search/
+│   │   └── diamond.py
+│   ├── detection/
+│   │   ├── families.py
+│   │   ├── matching.py
+│   │   ├── candidate_generation.py
+│   │   ├── scoring.py
+│   │   └── flags.py               # split / fusion / edge flags
+│   └── visualization/
+│       └── region_plot.py
+└── tests/
+    ├── test_models/
+    ├── test_annotation/
+    ├── test_search/
+    ├── test_detection/
+    └── test_visualization/
+```
+
+────────
+
+## 17. Testing strategy
+
+Cover biological edge cases, not only successful parsing. Use small synthetic genomes and proteins for deterministic unit tests, plus an end-to-end test with a small known reference and target.
+
+**Models and coordinates:** 0-based half-open internally, 1-based inclusive conversion at I/O (round-trip), forward and reverse genes, sorting, empty contigs, coding-orientation sequences, gene ID format.
+
+**GenBank parsing:** with and without `/translation`, `/transl_table`, `/codon_start`, reverse-strand translation, pseudogene exclusion, internal stop handling, compound CDS skipped with warning, boundary-overlapping CDS excluded, contained CDS included, partial genes flagged.
+
+**FASTA and Pyrodigal:** one contig, multiple contigs, contigs without genes, short contigs in meta mode, coordinates and proteins, `auto` selection logic.
+
+**DIAMOND and matching:** multiple hits per query, multiple HSPs per pair, coordinate conversion, union-based coverage without double counting, aggregated evidence, no per-HSP coverage filtering, `max_target_seqs` behaviour.
+
+**Families:** paralog grouping at the identity/coverage thresholds, shared-domain genes not grouped, grouping disabled, family counted once in coverage.
+
+**Region detection:** missing genes, inserted genes, duplicated homologues as separate events, rearranged order, reversed candidate, distance and span limits, long chains split into windows and deduplicated, multiple candidates on one contig, separate contigs never combined, `min_matches` and `min_reference_coverage`, padding after span check, contig-edge flag.
+
+**Scoring:** each component on constructed cases, reversal invariance of order and orientation, weight normalization, tie-breaking.
+
+**Split/fusion:** complementary fragments counted as one represented gene, one target matching distinct families, same-family matches not flagged as fusion, overlapping HSPs not double counted, flags carried into output.
+
+**Visualization:** multiple candidate lines, consistent family colours, arrows and strand, missing and additional genes distinguishable.
+
+────────
+
+## 18. Open questions and proposed defaults awaiting confirmation
+
+**Closed in revision 2:** duplicate handling, coverage levels, user coordinates, candidate grouping, gene IDs, circular/compound CDS, `auto` annotation, translation failures, paralog families, scoring approach.
+
+**Proposed defaults to confirm (implement as written, revisit in review):**
+
+1. Matching-event rule (OR of query and subject coverage at 0.5), 7.2.
+2. Family thresholds (90 % identity, 0.8 coverage, connected components), 7.6.
+3. `min_matches` AND `min_reference_coverage`, with `min_matches >= 2`, 7.5.
+4. Candidate overlap suppression (`max_candidate_overlap=0.5`), 7.3.
+5. Padding applied after the span check and larger-of-two combination, section 10.
+6. Component formulas for similarity, order, orientation and spacing, section 8.
+7. DIAMOND fields and `--max-hsps 0`, 6.2 and 6.4.
+8. Units: identity in percent, coverage as fractions, 0.2.
+9. Output columns, section 14, and `to_dataframe()` granularity, section 12.
+10. Pyrodigal training strategy for assemblies of 20 kb or more, 2.2.
+11. `edge_margin_bp` default of 500, section 10.
+
+**Still open:**
+
+- Split and fusion thresholds (9.4 values are untested starting points).
+- Distinguishing true fusions from shared domains beyond the family rule.
+- Weights and component definitions need validation on real data (v0.1 ships them as unvalidated defaults).
+
+Do not silently resolve these during implementation. Record the chosen default and ask when behaviour is materially affected.
+
+────────
+
+## 19. Implementation principles
+
+- Keep parsing, annotation, search, matching, candidate generation, scoring and plotting in separate modules.
+- Keep DIAMOND-specific logic isolated.
+- Preserve raw evidence wherever practical.
+- Avoid irreversible one-to-one matching assumptions.
+- Keep all significant homologous copies and individual HSPs.
+- Keep protein-level confidence separate from region-level confidence.
+- Treat gene order as evidence, not a requirement.
+- Analyse contigs independently.
+- Make thresholds configurable and document provisional defaults.
+- Convert coordinates only at I/O boundaries.
+- Keep the Python API primary. The CLI is a wrapper.
+- Add tests alongside each component.
+- Do not implement features excluded from v0.1.
+
+End of v0.1 working specification (revision 2)
