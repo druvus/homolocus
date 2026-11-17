@@ -1,5 +1,6 @@
 """Shared fixtures: synthetic GenBank files written with Biopython."""
 
+import random
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -36,3 +37,33 @@ def write_genbank(tmp_path: Path) -> GenBankWriter:
         return path
 
     return writer
+
+
+_SENSE_CODONS = tuple(
+    a + b + c
+    for a in "ACGT"
+    for b in "ACGT"
+    for c in "ACGT"
+    if a + b + c not in {"TAA", "TAG", "TGA"}
+)
+
+
+class SyntheticDna:
+    """Deterministic random DNA with planted open reading frames."""
+
+    def __init__(self, seed: int = 42) -> None:
+        self._rng = random.Random(seed)
+
+    def random(self, length: int) -> str:
+        """Uniform random sequence."""
+        return "".join(self._rng.choice("ACGT") for _ in range(length))
+
+    def orf(self, codons: int) -> str:
+        """ATG, ``codons`` random sense codons, then TAA."""
+        return "ATG" + "".join(self._rng.choice(_SENSE_CODONS) for _ in range(codons)) + "TAA"
+
+
+@pytest.fixture
+def dna() -> SyntheticDna:
+    """A seeded synthetic-DNA generator."""
+    return SyntheticDna()

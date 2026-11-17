@@ -31,7 +31,7 @@ from homolocus.annotation.translation import (
 )
 from homolocus.coordinates import to_zero_based
 from homolocus.models.contig import Contig
-from homolocus.models.gene import Gene
+from homolocus.models.gene import Gene, as_strand
 from homolocus.models.genome import Genome
 from homolocus.models.reference import ReferenceRegion
 from homolocus.models.skipped_feature import SkippedFeature, SkipReason
@@ -239,7 +239,7 @@ def _gene(cds: CdsFeature, protein: Protein | None) -> Gene:
         contig_id=cds.contig_id,
         start=int(cds.location.start),
         end=int(cds.location.end),
-        strand=cds.location.strand,
+        strand=as_strand(cds.location.strand),
         nucleotide_sequence=cds.nucleotides,
         protein_sequence=protein.sequence if protein else None,
         gene_name=cds.qualifier("gene"),

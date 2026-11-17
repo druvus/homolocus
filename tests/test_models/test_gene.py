@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from homolocus import Gene
+from homolocus.models.gene import as_strand
 
 
 def make_gene(**overrides: Any) -> Gene:
@@ -74,3 +75,14 @@ def test_gene_is_immutable() -> None:
 def test_illegal_genes_are_rejected(overrides: dict[str, Any], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         make_gene(**overrides)
+
+
+@pytest.mark.parametrize("value", [1, -1])
+def test_as_strand_accepts_plus_and_minus_one(value: int) -> None:
+    assert as_strand(value) == value
+
+
+@pytest.mark.parametrize("value", [0, 2, None, "+"])
+def test_as_strand_rejects_anything_else(value: object) -> None:
+    with pytest.raises(ValueError, match="strand"):
+        as_strand(value)

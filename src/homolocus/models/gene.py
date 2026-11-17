@@ -9,6 +9,15 @@ from homolocus.coordinates import strand_char, to_one_based
 Strand = Literal[1, -1]
 
 
+def as_strand(value: object) -> Strand:
+    """Parse an outside strand value; only 1 and -1 are accepted."""
+    if value == 1:
+        return 1
+    if value == -1:
+        return -1
+    raise ValueError(f"invalid strand {value!r}; expected 1 or -1")
+
+
 @dataclass(frozen=True)
 class Gene:
     """A protein-coding CDS on a contig.
