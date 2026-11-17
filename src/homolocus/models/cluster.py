@@ -5,6 +5,7 @@ evidence it was built from; the score and coverage metrics are derived, so
 they cannot disagree with that evidence.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass, fields
 from typing import Literal
 
@@ -73,6 +74,46 @@ class FamilyEvidence:
 
 
 @dataclass(frozen=True)
+class SplitEvent:
+    """A reference protein covered by complementary target fragments (spec 9.2, 9.4).
+
+    Fragments are target gene IDs in genomic order. ``adjacent`` means no other
+    gene lies between them on the contig; ``same_strand`` means all share a strand.
+    """
+
+    reference_gene_id: str
+    fragment_ids: tuple[str, ...]
+    adjacent: bool
+    same_strand: bool
+
+    def __post_init__(self) -> None:
+        _check_event(self.reference_gene_id, "reference gene", self.fragment_ids, "fragments")
+
+
+@dataclass(frozen=True)
+class FusionEvent:
+    """A target protein aligned to parts of several families (spec 9.3, 9.4).
+
+    Families are listed in order along the target protein.
+    """
+
+    target_gene_id: str
+    family_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        _check_event(self.target_gene_id, "target gene", self.family_ids, "families")
+
+
+def _check_event(owner: str, owner_kind: str, members: tuple[str, ...], kind: str) -> None:
+    if not owner:
+        raise ValueError(f"an event needs a {owner_kind}")
+    if len(members) < 2:
+        raise ValueError(f"an event needs at least two {kind}")
+    if len(set(members)) != len(members):
+        raise ValueError(f"an event lists duplicate {kind}")
+
+
+@dataclass(frozen=True)
 class Cluster:
     """One evaluated candidate region on one target contig (spec 5.8).
 
@@ -94,6 +135,8 @@ class Cluster:
     components: ScoreComponents
     weights: ScoringWeights
     touches_contig_edge: bool
+    splits: tuple[SplitEvent, ...] = ()
+    fusions: tuple[FusionEvent, ...] = ()
 
     def __post_init__(self) -> None:
         if not 0 <= self.start < self.end:
@@ -104,29 +147,47 @@ class Cluster:
             raise ValueError(f"cluster genes must lie on contig {self.contig_id}")
         self._check_evidence()
         self._check_families()
+        self._check_split_and_fusion()
+
+    def _check_split_and_fusion(self) -> None:
+        evidence = {gene.id for gene in self.evidence_genes}
+        fragments = [gene_id for split in self.splits for gene_id in split.fragment_ids]
+        _require_within(fragments, evidence, "split fragment")
+        _require_within(
+            [fusion.target_gene_id for fusion in self.fusions], evidence, "fusion target"
+        )
+        families = [family_id for fusion in self.fusions for family_id in fusion.family_ids]
+        _require_within(families, {f.family_id for f in self.families}, "fusion family")
 
     def _check_evidence(self) -> None:
         evidence = {gene.id for gene in self.evidence_genes}
         if not self.event_ids:
             raise ValueError("a cluster needs at least one event")
-        if not set(self.event_ids) <= evidence:
-            raise ValueError("every event must be an evidence gene of the cluster")
-        if any(match.target_gene_id not in evidence for match in self.matches):
-            raise ValueError("every match must belong to an evidence gene of the cluster")
+        _require_within(self.event_ids, evidence, "event")
+        _require_within([match.target_gene_id for match in self.matches], evidence, "match")
 
     def _check_families(self) -> None:
         if not self.families:
             raise ValueError("a cluster needs at least one family")
         if len({family.family_id for family in self.families}) != len(self.families):
             raise ValueError("duplicate family in cluster")
-        evidence = {gene.id for gene in self.evidence_genes}
-        if any(not set(family.copies) <= evidence for family in self.families):
-            raise ValueError("every family copy must be an evidence gene of the cluster")
+        copies = [gene_id for family in self.families for gene_id in family.copies]
+        _require_within(copies, {gene.id for gene in self.evidence_genes}, "family copy")
 
     @property
     def span(self) -> int:
         """Unpadded length in base pairs."""
         return self.end - self.start
+
+    @property
+    def potential_split(self) -> bool:
+        """Whether any reference protein looks split across target genes (spec 9.2)."""
+        return bool(self.splits)
+
+    @property
+    def potential_fusion(self) -> bool:
+        """Whether any target protein looks fused from several families (spec 9.3)."""
+        return bool(self.fusions)
 
     @property
     def evidence_genes(self) -> tuple[Gene, ...]:
@@ -178,3 +239,10 @@ class Cluster:
             + weights.orientation * parts.orientation
             + weights.spacing * parts.spacing
         )
+
+
+def _require_within(ids: Iterable[str], allowed: set[str], what: str) -> None:
+    """Every ID must be one the cluster knows (its evidence genes or families)."""
+    unknown = sorted(set(ids) - allowed)
+    if unknown:
+        raise ValueError(f"{what} {unknown[0]} does not belong to the cluster")
