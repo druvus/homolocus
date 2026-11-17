@@ -5,6 +5,8 @@ proteins, runs RegionFinder with real DIAMOND and default thresholds, and
 checks what a user would see in the results.
 """
 
+import csv
+
 import pytest
 
 from scenario_world import Slot, World, blocks, genome, run
@@ -126,3 +128,52 @@ def test_two_copies_on_one_contig_are_ranked_by_strength() -> None:
     assert first.start == 10_000
     assert second.start == 200_000
     assert first.score > second.score
+
+
+def gene_flags(output, gene_id: str) -> set[str]:
+    """Flags of one gene in the written candidate_001.tsv."""
+    with (output / "candidates" / "candidate_001.tsv").open() as handle:
+        rows = [
+            row
+            for row in csv.DictReader(handle, delimiter="\t")
+            if row["target_gene_id"] == gene_id
+        ]
+    return {flag for row in rows for flag in row["flags"].split(";") if flag}
+
+
+def test_split_protein_is_flagged_and_still_represents_its_gene(tmp_path) -> None:
+    world = World(4)
+    halves = [Slot(world.part(1, 0, 150)), Slot(world.part(1, 150, 300))]
+    target = world.contig(
+        "t1", [Slot(world.copy(0)), *halves, Slot(world.copy(2)), Slot(world.copy(3))]
+    )
+    found = run(world.reference(), genome(target))
+    (candidate,) = found.candidates
+    assert candidate.potential_split
+    assert candidate.reference_coverage == 1.0
+    found.write(tmp_path)
+    assert "split" in found.to_dataframe()["flags"][0].split(";")
+    for fragment in target.genes[1:3]:
+        assert "split_fragment" in gene_flags(tmp_path, fragment.id)
+
+
+def test_fused_protein_is_flagged_on_the_candidate_and_the_gene(tmp_path) -> None:
+    world = World(4)
+    fused = Slot(world.copy(1) + world.copy(2))
+    target = world.contig("t1", [Slot(world.copy(0)), fused, Slot(world.copy(3))])
+    found = run(world.reference(), genome(target))
+    (candidate,) = found.candidates
+    assert candidate.potential_fusion
+    assert candidate.reference_coverage == 1.0
+    found.write(tmp_path)
+    assert "fusion" in found.to_dataframe()["flags"][0].split(";")
+    assert "fused" in gene_flags(tmp_path, target.genes[1].id)
+
+
+def test_region_at_a_contig_end_is_flagged_edge() -> None:
+    world = World(4)
+    slots = [Slot(world.copy(i)) for i in range(4)]
+    at_start = world.contig("t1", slots, offset=100)
+    inside = world.contig("t1", slots)
+    assert run(world.reference(), genome(at_start)).candidates[0].touches_contig_edge
+    assert not run(world.reference(), genome(inside)).candidates[0].touches_contig_edge
