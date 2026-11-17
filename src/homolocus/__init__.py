@@ -1,6 +1,6 @@
 """Find homologous genomic regions in bacterial genomes."""
 
-from homolocus.config import DiamondSearch, FamilyGrouping
+from homolocus.config import DiamondSearch, FamilyGrouping, RegionDetection
 from homolocus.models.alignment import Alignment
 from homolocus.models.contig import Contig
 from homolocus.models.gene import Gene, Strand
@@ -21,6 +21,7 @@ __all__ = [
     "Genome",
     "ReferenceFamilies",
     "ReferenceRegion",
+    "RegionDetection",
     "SkipReason",
     "SkippedFeature",
     "Strand",
