@@ -79,3 +79,12 @@ def test_genome_carries_skipped_features() -> None:
     genome = Genome(contigs={"c1": contig("c1")}, skipped_features=skipped)
     assert genome.skipped_features == skipped
     assert Genome(contigs={"c1": contig("c1")}).skipped_features == ()
+
+
+def test_from_file_reads_a_genome(tmp_path) -> None:
+    path = tmp_path / "target.fna"
+    path.write_text(">c1 first\nACGTACGTAC\n", encoding="utf-8")
+    genome = Genome.from_file(path)
+    assert list(genome.contigs) == ["c1"]
+    assert genome.source == str(path)
+    assert Genome.from_file(str(path), annotation="pyrodigal") == genome

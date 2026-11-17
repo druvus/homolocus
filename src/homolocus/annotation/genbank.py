@@ -79,16 +79,27 @@ class ParsedRecord:
 
 def read_genbank(path: str | Path) -> Genome:
     """Read every record of a GenBank file into a Genome, one contig per record."""
+    return genbank_genome(read_records(path), source=str(path))
+
+
+def genbank_genome(records: list[SeqRecord], source: str) -> Genome:
+    """Build a Genome from GenBank records using their supplied CDS annotation."""
+    check_unique_ids(records, source)
     contigs: dict[str, Contig] = {}
     skipped: list[SkippedFeature] = []
-    for record in read_records(path):
-        contig_id = record_id(record)
-        if contig_id in contigs:
-            raise ValueError(f"duplicate record ID {contig_id!r} in {path}")
+    for record in records:
         parsed = parse_record(record)
-        contigs[contig_id] = record_contig(record, parsed.genes)
+        contigs[record_id(record)] = record_contig(record, parsed.genes)
         skipped.extend(parsed.skipped)
-    return Genome(contigs=contigs, source=str(path), skipped_features=tuple(skipped))
+    return Genome(contigs=contigs, source=source, skipped_features=tuple(skipped))
+
+
+def check_unique_ids(records: list[SeqRecord], source: str) -> None:
+    """Raise ValueError if two records share an ID."""
+    ids = [record_id(record) for record in records]
+    duplicates = sorted({contig_id for contig_id in ids if ids.count(contig_id) > 1})
+    if duplicates:
+        raise ValueError(f"duplicate record IDs {duplicates} in {source}")
 
 
 def read_reference_region(
@@ -147,14 +158,14 @@ def read_records(path: str | Path) -> list[SeqRecord]:
 def record_id(record: SeqRecord) -> str:
     """The record's ID, which becomes the contig ID. Raises ValueError if missing."""
     if not record.id:
-        raise ValueError("GenBank record without an ID")
+        raise ValueError("sequence record without an ID")
     return str(record.id)
 
 
 def record_sequence(record: SeqRecord) -> str:
     """The record's nucleotide sequence. Raises ValueError if it has none."""
     if record.seq is None:
-        raise ValueError(f"GenBank record {record_id(record)!r} has no sequence")
+        raise ValueError(f"sequence record {record_id(record)!r} has no sequence")
     return str(record.seq)
 
 
@@ -164,8 +175,17 @@ def record_contig(record: SeqRecord, genes: Iterable[Gene]) -> Contig:
         id=record_id(record),
         sequence=record_sequence(record),
         genes=tuple(genes),
-        description=record.description or None,
+        description=record_description(record),
     )
+
+
+def record_description(record: SeqRecord) -> str | None:
+    """Record description without a leading copy of the ID; None when nothing is left."""
+    text = str(record.description or "")
+    contig_id = record_id(record)
+    if text == contig_id or text.startswith(contig_id + " "):
+        text = text[len(contig_id) :]
+    return text.strip() or None
 
 
 def parse_record(record: SeqRecord, region: Region | None = None) -> ParsedRecord:

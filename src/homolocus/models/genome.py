@@ -2,11 +2,16 @@
 
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 from homolocus.models.contig import Contig
 from homolocus.models.gene import Gene
 from homolocus.models.skipped_feature import SkippedFeature
+
+if TYPE_CHECKING:
+    from homolocus.annotation.genome_file import Annotation
 
 
 @dataclass(frozen=True)
@@ -39,3 +44,14 @@ class Genome:
     def gene(self, gene_id: str) -> Gene:
         """Return the gene with this canonical ID. Raises ``KeyError`` if absent."""
         return self._genes_by_id[gene_id]
+
+    @classmethod
+    def from_file(cls, path: str | Path, annotation: "Annotation" = "auto") -> "Genome":
+        """Read a target genome from a GenBank or FASTA file (spec 2.2).
+
+        ``"auto"`` uses supplied CDS annotation when a GenBank file has any,
+        and Pyrodigal otherwise. ``"pyrodigal"`` always predicts genes.
+        """
+        from homolocus.annotation.genome_file import read_genome  # noqa: PLC0415
+
+        return read_genome(path, annotation)
