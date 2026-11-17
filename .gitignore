@@ -1,0 +1,17 @@
+# Quality-tool output (crapper, dryer, mutator)
+.metrics/
+target/
+
+# Python
+__pycache__/
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Tool caches
+.coverage
+.hypothesis/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
