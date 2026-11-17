@@ -246,3 +246,186 @@ def test_gene_rows_of_every_candidate_carry_its_id() -> None:
         FAR_A.id,
         FAR_B.id,
     ]
+
+
+# Writing the output directory (spec 14)
+
+import json  # noqa: E402
+
+from homolocus import SkippedFeature, SkipReason  # noqa: E402
+
+
+def tree(root) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(root)): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def test_write_creates_the_whole_tree(tmp_path) -> None:
+    results().write(tmp_path / "out")
+    assert sorted(tree(tmp_path / "out")) == [
+        "alignments/diamond.tsv",
+        "alignments/protein_ids.tsv",
+        "alignments/reference_self.tsv",
+        "analysis.json",
+        "candidates/candidate_001.tsv",
+        "candidates/candidate_002.tsv",
+        "summary.tsv",
+    ]
+
+
+def test_raw_diamond_tables_are_written_byte_for_byte(tmp_path) -> None:
+    raw = "r000001\tt000001\t80.5\r\nodd line without newline"
+    results(raw_main=raw, raw_self="self\n").write(tmp_path)
+    assert (tmp_path / "alignments" / "diamond.tsv").read_bytes() == raw.encode()
+    assert (tmp_path / "alignments" / "reference_self.tsv").read_text() == "self\n"
+    mapping = (tmp_path / "alignments" / "protein_ids.tsv").read_text().splitlines()
+    assert mapping[:2] == ["token\tgene_id", f"r000001\t{REF_GENES[0].id}"]
+
+
+def test_tsv_files_match_the_data_frames(tmp_path) -> None:
+    found = results()
+    found.write(tmp_path)
+    summary = pd.read_csv(tmp_path / "summary.tsv", sep="\t", keep_default_na=False)
+    assert list(summary.columns) == list(found.to_dataframe().columns)
+    assert list(summary["candidate_id"]) == ["candidate_001", "candidate_002"]
+    assert list(summary["start"]) == [10_001, 100_001]
+    genes = pd.read_csv(
+        tmp_path / "candidates" / "candidate_001.tsv", sep="\t", keep_default_na=False
+    )
+    assert "candidate_id" not in genes.columns
+    expected = found.genes_dataframe()
+    expected = expected[expected["candidate_id"] == "candidate_001"]
+    assert list(genes["target_gene_id"]) == list(expected["target_gene_id"])
+    assert list(genes["reference_gene_id"]) == list(expected["reference_gene_id"].fillna(""))
+
+
+def test_floats_have_six_significant_digits_and_missing_values_are_empty(tmp_path) -> None:
+    results().write(tmp_path)
+    lines = (tmp_path / "candidates" / "candidate_001.tsv").read_text().splitlines()
+    header = lines[0].split("\t")
+    insert_row = dict(zip(header, lines[4].split("\t"), strict=True))
+    assert insert_row["identity"] == ""
+    assert insert_row["reference_gene_id"] == ""
+    summary = (tmp_path / "summary.tsv").read_text().splitlines()
+    score = dict(zip(summary[0].split("\t"), summary[1].split("\t"), strict=True))["score"]
+    assert len(score.replace(".", "").lstrip("0")) <= 6
+
+
+def test_writing_twice_gives_identical_bytes(tmp_path) -> None:
+    results().write(tmp_path / "a")
+    results().write(tmp_path / "b")
+    first = tree(tmp_path / "a")
+    results().write(tmp_path / "a")
+    assert tree(tmp_path / "a") == first == tree(tmp_path / "b")
+
+
+def test_stale_candidate_files_are_removed_and_foreign_files_kept(tmp_path) -> None:
+    (tmp_path / "candidates").mkdir()
+    (tmp_path / "candidates" / "candidate_009.tsv").write_text("old")
+    (tmp_path / "candidates" / "notes.txt").write_text("mine")
+    (tmp_path / "README").write_text("mine too")
+    results().write(tmp_path)
+    assert not (tmp_path / "candidates" / "candidate_009.tsv").exists()
+    assert (tmp_path / "candidates" / "notes.txt").read_text() == "mine"
+    assert (tmp_path / "README").read_text() == "mine too"
+
+
+def test_no_candidates_still_writes_headers(tmp_path) -> None:
+    results(candidates=()).write(tmp_path)
+    assert (tmp_path / "summary.tsv").read_text().startswith("rank\tcandidate_id\t")
+    assert list((tmp_path / "candidates").iterdir()) == []
+
+
+def analysis(tmp_path, **overrides) -> dict:
+    results(**overrides).write(tmp_path)
+    return json.loads((tmp_path / "analysis.json").read_text())
+
+
+def test_analysis_records_versions_parameters_and_inputs(tmp_path) -> None:
+    data = analysis(tmp_path)
+    assert sorted(data) == [
+        "families",
+        "homolocus_version",
+        "n_candidates",
+        "parameters",
+        "reference",
+        "reference_genes_without_protein",
+        "skipped_features",
+        "target",
+        "tool_versions",
+        "untranslatable_genes",
+        "warnings",
+    ]
+    assert data["tool_versions"]["diamond"] == "2.2.9"
+    assert {"pyrodigal", "biopython"} <= set(data["tool_versions"])
+    assert data["homolocus_version"]
+    assert data["parameters"]["search"]["hsp_evalue"] == 1e-3
+    assert data["parameters"]["detection"]["min_matches"] == 2
+    assert data["parameters"]["family_grouping"]["family_min_identity"] == 90.0
+    assert data["parameters"]["scoring"]["content"] == 0.4
+    assert data["reference"] == {
+        "contig": "ref",
+        "start": 1,
+        "end": 4500,
+        "n_genes": 4,
+        "source": None,
+    }
+    assert data["target"] == {
+        "name": "target",
+        "source": "target.fna",
+        "n_contigs": 1,
+        "n_genes": 6,
+    }
+    assert data["families"] == [
+        {"id": f"F{n + 1:03d}", "gene_ids": [g.id]} for n, g in enumerate(REF_GENES)
+    ]
+    assert data["n_candidates"] == 2
+    assert data["warnings"] == []
+
+
+def test_analysis_records_skipped_and_untranslatable_genes_one_based(tmp_path) -> None:
+    no_protein = Gene("ref", 4000, 4300, 1, "A" * 300, None)
+    reference = replace(
+        REFERENCE,
+        genes=(*REF_GENES, no_protein),
+        skipped_features=(SkippedFeature("ref", 3700, 3790, "b9", SkipReason.PSEUDOGENE),),
+    )
+    lost_target = Gene("t1", 150_000, 150_300, -1, "A" * 300, None)
+    genome = Genome(
+        contigs={
+            "t1": replace(GENOME.contigs["t1"], genes=(*GENOME.contigs["t1"].genes, lost_target))
+        },
+        skipped_features=(SkippedFeature("t1", 0, 30, None, SkipReason.COMPOUND_LOCATION),),
+    )
+    data = analysis(tmp_path, reference=reference, genome=genome, warnings=("careful",))
+    assert data["reference_genes_without_protein"] == [no_protein.id]
+    assert data["untranslatable_genes"] == {
+        "reference": [no_protein.id],
+        "target": [lost_target.id],
+    }
+    assert data["skipped_features"] == {
+        "reference": [
+            {"contig": "ref", "start": 3701, "end": 3790, "locus_tag": "b9", "reason": "pseudogene"}
+        ],
+        "target": [
+            {
+                "contig": "t1",
+                "start": 1,
+                "end": 30,
+                "locus_tag": None,
+                "reason": "compound_location",
+            }
+        ],
+    }
+    assert data["warnings"] == ["careful"]
+
+
+def test_analysis_is_sorted_indented_and_has_no_timestamp(tmp_path) -> None:
+    results().write(tmp_path)
+    text = (tmp_path / "analysis.json").read_text()
+    assert text.endswith("}\n")
+    assert text.startswith('{\n  "families"')
+    assert "time" not in text.lower()

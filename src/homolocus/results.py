@@ -5,6 +5,7 @@ User-facing coordinates are 1-based inclusive (spec 4).
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -127,6 +128,12 @@ class RegionResults:
                 family = families[self.families.family_of(match.reference_gene_id).id]
                 rows.append({**base, **_match_columns(match, family)})
         return rows
+
+    def write(self, output_dir: str | Path) -> None:
+        """Write every output file of spec 14 to ``output_dir``."""
+        from homolocus.output import write_results  # noqa: PLC0415
+
+        write_results(self, output_dir)
 
 
 _EMPTY_MATCH: Row = {
