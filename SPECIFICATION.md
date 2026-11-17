@@ -587,6 +587,9 @@ For a candidate and a reference gene R:
 - Coverage of R is the union of aligned reference positions across those target proteins, divided by R's length. No double counting.
 - A family is represented when the best coverage among its member genes is at least `min_reference_gene_coverage`.
 - This lets several split fragments jointly represent one reference protein.
+- **[DECIDED]** A candidate's evidence genes are the target genes lying fully inside its unpadded span. Padding never adds evidence (10).
+- **[DECIDED]** A gene's role is `matched` when it is a matching event and `additional` otherwise. Genes with only weak, sub-event matches are `additional`; their GeneMatches are still kept and count toward 7.7 coverage.
+- **[PROPOSED]** Per family, the best member is the member with the highest 7.7 coverage (ties: genomic order). The best copy is the evidence gene with the highest bit score to that best member (ties: genomic order). Similarity, order, orientation and spacing all use this pairing.
 
 ### 7.8 Gene order
 
@@ -595,6 +598,10 @@ Gene order is supporting evidence, not a requirement. Rearrangements do not disq
 ### 7.9 Multiple candidates
 
 Return all candidates passing thresholds, ranked by composite score (ties: higher reference coverage, then lower contig start). Do not return only the top one. Candidates on separate contigs remain separate.
+
+- **[PROPOSED]** Full ranking key: score descending, reference coverage descending, then contig order in the genome, start, end and event IDs, so the order is always deterministic.
+- **[PROPOSED]** Overlap deduplication (7.3) is greedy in rank order: a candidate is dropped when its unpadded span overlaps an already kept candidate on the same contig by more than `max_candidate_overlap` times the shorter span.
+- **[PROPOSED]** The checks run in `detection/evaluation.py`: events, windows, evaluation, filtering, ranking, deduplication, per contig. `min_matches` greater than the number of families raises an error before any contig is processed.
 
 ────────
 
@@ -628,6 +635,8 @@ Component definitions **[PROPOSED]**, each in `[0, 1]`:
 - **content** = `reference_coverage`: represented families / total families (families with at least one searchable gene).
 - **similarity** = mean over represented families of `identity/100 × coverage`, using the best member and best copy (identity from the aggregated `GeneMatch`, coverage from 7.7).
 - **order**: take represented families in reference order and the best copy of each in target order. order = longest monotonic subsequence (increasing or decreasing, whichever is longer) divided by number of represented families. A fully reversed region scores 1.
+  - **[PROPOSED]** Reference order is the genomic order of the best members. The subsequence is non-strict, so two families whose best copy is the same (fused) target gene can both count.
+- **[PROPOSED]** With fewer than two represented families, order, orientation and spacing are 0, and similarity is 0 when none is represented. Such candidates always fail `min_matches`.
 - **orientation**: for each pair of neighbouring represented families in reference order, check whether their relative strand (same or opposite) in the target equals that in the reference. orientation = fraction of agreeing pairs. Reversal-invariant.
 - **spacing**: `min(a, b) / max(a, b)`, where `a` is the unpadded candidate span and `b` is the reference span from the first to the last represented family. It penalizes large insertions or compression.
 
@@ -700,6 +709,7 @@ Thresholds need validation on real data. Proposed starting values, all configura
 - **[PROPOSED]** `padding_genes` adds whole genes from the contig's sorted gene list on each side of the outermost events; `padding_bp` adds base pairs.
 - **[PROPOSED]** `max_region_bp` is checked against the **unpadded** span. Padding is added afterwards and affects the reconstructed/displayed interval only, not the evidence used for detection.
 - A candidate's `touches_contig_edge` flag is set when its first or last matched gene is partial or lies within `edge_margin_bp` of the contig end (**[PROPOSED]** default 500). It signals possible truncation by assembly fragmentation.
+  - **[PROPOSED]** "Within" is inclusive and applies to both contig ends: a boundary event starting at most `edge_margin_bp` from the contig start, or ending at most that far from the contig end.
 
 ────────
 
@@ -873,7 +883,8 @@ homolocus/
 │   │   ├── matching.py
 │   │   ├── candidate_generation.py
 │   │   ├── scoring.py
-│   │   └── flags.py               # split / fusion / edge flags
+│   │   ├── flags.py               # split / fusion / edge flags
+│   │   └── evaluation.py          # coverage, Cluster building, filter, rank, dedup
 │   └── visualization/
 │       ├── __init__.py
 │       └── region_plot.py
@@ -945,13 +956,13 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 16. DIAMOND token prefixes `r`/`t`, minimum DIAMOND 2.0, and deterministic sorting of parsed alignments, 4.1, 6.2, 6.4.
 17. Family linking from aggregated self-search evidence with inclusive thresholds, and family ID numbering, 7.6.
 18. Literal intervening-gene count, single over-long event windows, window ordering, and gene-based padding, 7.3, 10.
+19. Best member and best copy, non-strict order, components with fewer than two families, full ranking key, greedy overlap deduplication, inclusive edge margin, 7.7, 7.9, 8, 10.
 
 **Still open:**
 
 - Split and fusion thresholds (9.4 values are untested starting points).
 - Distinguishing true fusions from shared domains beyond the family rule.
 - Weights and component definitions need validation on real data (v0.1 ships them as unvalidated defaults).
-- Role of a target gene inside a candidate that has only weak matches below the event threshold (7.2): `matched` or `additional` in the candidate TSV (14). Proposed: `additional`, with its weak GeneMatch evidence still listed.
 
 Do not silently resolve these during implementation. Record the chosen default and ask when behaviour is materially affected.
 
@@ -1005,7 +1016,7 @@ Short definitions. The rules live in the referenced sections.
 | Window | A part of a chain longer than `max_region_bp`, anchored on one event (7.3). |
 | Span | Distance from the start of the first matching event to the end of the last, without padding (7.3, 10). |
 | Candidate | One evaluated chain or window on one contig. The model is `Cluster` (5.8, 7.3). |
-| Matched gene | A target gene in a candidate that is a matching event (5.8). Whether a gene with only weak, sub-event matches counts as matched is open (18). |
+| Matched gene | A target gene in a candidate that is a matching event (5.8, 7.7). Genes with only weak, sub-event matches are additional. |
 | Additional gene | A target gene in a candidate that is not matched (5.8, 8.2). |
 | Reference-gene coverage | Union of aligned reference positions across a candidate's target genes, as a fraction of the reference protein (7.7). |
 | Represented family | A family whose best member reaches `min_reference_gene_coverage` in a candidate (7.7). |
