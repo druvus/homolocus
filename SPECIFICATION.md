@@ -131,6 +131,13 @@ genome = Genome.from_file("target.fna", annotation="auto")
 - Pyrodigal mode: contigs shorter than 20 kb use meta mode. Training details for longer contigs (single genome training on the whole assembly vs. per contig) are **[PROPOSED]**: train once on the whole assembly when it totals at least 20 kb. Translation table 11.
 - Partial genes at contig edges (Pyrodigal partial flags, or `<`/`>` in GenBank locations) are kept and flagged (`Gene.partial`).
 
+Input details:
+
+- **[DECIDED]** The file format is detected from the content, not the extension: a first non-empty line starting with `LOCUS` is GenBank, one starting with `>` is FASTA, anything else is an error.
+- **[DECIDED]** `annotation` accepts `"auto"` (above) and `"pyrodigal"`, which always predicts genes and ignores any supplied CDS annotation.
+- **[PROPOSED]** Meta mode uses only Pyrodigal's translation-table-11 models, so table 11 holds in meta mode too.
+- **[PROPOSED]** Training happens only when at least one contig is 20 kb or longer; it then uses all contigs of the assembly. Contigs under 20 kb use meta mode either way.
+
 GFF is not supported in v0.1.
 
 ### 2.3 Multiple contigs
@@ -817,6 +824,7 @@ homolocus/
 │   ├── annotation/
 │   │   ├── __init__.py
 │   │   ├── genbank.py
+│   │   ├── genome_file.py         # format detection, Genome.from_file dispatch
 │   │   ├── prodigal.py
 │   │   └── translation.py         # CDS translation rules (3.2), pure
 │   ├── search/
@@ -895,6 +903,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 11. `edge_margin_bp` default of 500, section 10.
 12. Idempotent, deterministic output writing, section 14.
 13. Invalid supplied `/translation` definition and one summary warning per contig, 3.2.
+14. Pyrodigal meta mode restricted to table-11 models, and training only when a contig is at least 20 kb, 2.2.
 
 **Still open:**
 
