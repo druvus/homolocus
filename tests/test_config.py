@@ -95,6 +95,11 @@ def test_region_detection_defaults() -> None:
     assert (config.max_intervening_genes, config.max_inter_match_bp_gap) == (10, 20_000)
     assert (config.max_region_bp, config.max_candidate_overlap) == (50_000, 0.5)
     assert (config.padding_genes, config.padding_bp, config.edge_margin_bp) == (0, 0, 500)
+    assert (
+        config.min_split_contribution,
+        config.max_fragment_overlap,
+        config.min_fusion_part_coverage,
+    ) == (0.2, 0.2, 0.2)
 
 
 @pytest.mark.parametrize(
@@ -105,6 +110,8 @@ def test_region_detection_defaults() -> None:
         {"min_event_coverage": 0.0, "max_candidate_overlap": 1.0},
         {"max_intervening_genes": 0, "max_inter_match_bp_gap": 0},
         {"max_region_bp": 1, "padding_genes": 0, "padding_bp": 0, "edge_margin_bp": 0},
+        {"min_split_contribution": 0.0, "max_fragment_overlap": 1.0},
+        {"min_fusion_part_coverage": 1.0, "max_fragment_overlap": 0.0},
     ],
 )
 def test_region_detection_boundaries_are_allowed(overrides: dict[str, Any]) -> None:
@@ -119,6 +126,9 @@ def test_region_detection_boundaries_are_allowed(overrides: dict[str, Any]) -> N
         "min_reference_gene_coverage",
         "min_event_coverage",
         "max_candidate_overlap",
+        "min_split_contribution",
+        "max_fragment_overlap",
+        "min_fusion_part_coverage",
     ],
 )
 @pytest.mark.parametrize("value", [-0.01, 1.01])

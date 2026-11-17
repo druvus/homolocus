@@ -1,5 +1,7 @@
 """Candidate evaluation: coverage, families, ranking (spec 7.7, 7.9, 8)."""
 
+from dataclasses import replace
+
 import pytest
 
 from homolocus import Alignment, GeneFamily, GeneMatch
@@ -335,6 +337,52 @@ def test_edge_flag_is_carried_into_the_cluster() -> None:
     assert cluster.touches_contig_edge
 
 
+def test_split_is_carried_into_the_cluster_without_changing_the_score() -> None:
+    first, half_a = target("t1", 10_000), target("t1", 11_200, length=450)
+    half_b = target("t1", 11_700, length=450)
+    rest = [target("t1", 12_400), target("t1", 13_600)]
+    matches = [
+        match(REF_GENES[0], first),
+        match(REF_GENES[1], half_a, query=(0, 150)),
+        match(REF_GENES[1], half_b, query=(150, 300)),
+        match(REF_GENES[2], rest[0]),
+        match(REF_GENES[3], rest[1]),
+    ]
+    (cluster,) = detect(context(), genome(contig("t1", first, half_a, half_b, *rest)), matches)
+    assert cluster.potential_split
+    assert not cluster.potential_fusion
+    (split,) = cluster.splits
+    assert (split.reference_gene_id, split.fragment_ids) == (
+        REF_GENES[1].id,
+        (half_a.id, half_b.id),
+    )
+    assert split.adjacent
+    assert cluster.families[1].coverage == 1.0
+    assert replace(cluster, splits=()).score == cluster.score
+
+
+def test_fusion_is_carried_into_the_cluster() -> None:
+    first, second, fused = target("t1", 10_000), target("t1", 11_200), target("t1", 12_400)
+    # Each reference protein aligns in full to one half of the fused target protein.
+    fused_c = Alignment(
+        REF_GENES[2].id, fused.id, 80.0, 300, 0, 300, 0, 150, 300, 300, 1e-40, 300.0
+    )
+    fused_d = Alignment(
+        REF_GENES[3].id, fused.id, 80.0, 300, 0, 300, 150, 300, 300, 300, 1e-40, 300.0
+    )
+    matches = [
+        match(REF_GENES[0], first),
+        match(REF_GENES[1], second),
+        GeneMatch(REF_GENES[2].id, fused.id, (fused_c,)),
+        GeneMatch(REF_GENES[3].id, fused.id, (fused_d,)),
+    ]
+    (cluster,) = detect(context(), genome(contig("t1", first, second, fused)), matches)
+    assert cluster.potential_fusion
+    assert cluster.fusions[0].target_gene_id == fused.id
+    assert cluster.fusions[0].family_ids == ("F003", "F004")
+    assert not cluster.potential_split
+
+
 def test_min_matches_may_equal_the_family_count() -> None:
     assert context(min_matches=4).detection.min_matches == 4
 
@@ -419,3 +467,50 @@ def test_end_to_end_with_diamond_finds_a_rearranged_reversed_copy(tmp_path, prot
     assert best.role(t1[2].id) == "additional"
     assert best.components.content == 0.75
     assert 0 < best.components.order < 1
+
+
+@pytest.mark.diamond
+def test_end_to_end_with_diamond_flags_a_split_protein(tmp_path, proteins) -> None:
+    from homolocus import FamilyGrouping  # noqa: PLC0415
+    from homolocus.detection.families import group_families  # noqa: PLC0415
+    from homolocus.models.gene_match import aggregate  # noqa: PLC0415
+    from homolocus.search.diamond import search  # noqa: PLC0415
+    from homolocus.search.protein_index import ProteinIndex  # noqa: PLC0415
+
+    sequences = [proteins.random(300) for _ in range(4)]
+    ref_genes = [
+        Gene("ref", n * 1200, n * 1200 + 900, 1, "A" * 900, seq) for n, seq in enumerate(sequences)
+    ]
+    reference = ReferenceRegion("ref", 0, 4500, "A" * 4500, tuple(ref_genes))
+    split_b = proteins.mutate(sequences[1], 0.85)
+    proteins_on_target = [
+        proteins.mutate(sequences[0], 0.85),
+        split_b[:150],
+        split_b[150:],
+        proteins.mutate(sequences[2], 0.85),
+        proteins.mutate(sequences[3], 0.85),
+    ]
+    genes, start = [], 10_000
+    for protein in proteins_on_target:
+        length = 3 * len(protein)
+        genes.append(Gene("t1", start, start + length, 1, "A" * length, protein))
+        start += length + 300
+    world = Genome(contigs={"t1": Contig("t1", "A" * 40_000, genes)})
+
+    index = ProteinIndex.build(ref_genes, genes)
+    self_hits = search(index, DiamondSearch(), tmp_path / "self.tsv", self_search=True)
+    families = group_families(ref_genes, self_hits, FamilyGrouping())
+    matches = aggregate(search(index, DiamondSearch(), tmp_path / "main.tsv"))
+    ctx = DetectionContext(
+        reference, families, DiamondSearch(), RegionDetection(), ScoringWeights()
+    )
+
+    (cluster,) = detect(ctx, world, matches)
+    assert cluster.reference_coverage == 1.0
+    assert cluster.potential_split
+    (split,) = cluster.splits
+    assert split.reference_gene_id == ref_genes[1].id
+    assert split.fragment_ids == (genes[1].id, genes[2].id)
+    assert split.adjacent
+    assert split.same_strand
+    assert not cluster.potential_fusion

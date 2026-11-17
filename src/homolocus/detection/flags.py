@@ -1,7 +1,18 @@
-"""Candidate flags (spec 9, 10). Split and fusion flags follow in milestone 9."""
+"""Candidate flags: contig edge, potential splits and fusions (spec 9, 10). Pure functions."""
 
+from collections.abc import Iterable, Mapping, Sequence
+
+from homolocus.config import RegionDetection
 from homolocus.detection.candidate_generation import EventWindow
+from homolocus.intervals import Interval, merge_intervals, union_length
+from homolocus.models.cluster import FusionEvent, SplitEvent
 from homolocus.models.contig import Contig
+from homolocus.models.gene import Gene
+from homolocus.models.gene_family import ReferenceFamilies
+from homolocus.models.gene_match import GeneMatch
+
+Part = tuple[str, tuple[Interval, ...]]
+"""A labelled set of merged intervals: a split fragment or a fused part."""
 
 
 def touches_contig_edge(window: EventWindow, contig: Contig, *, edge_margin_bp: int) -> bool:
@@ -15,3 +26,138 @@ def touches_contig_edge(window: EventWindow, contig: Contig, *, edge_margin_bp: 
     near_start = first.start <= edge_margin_bp
     near_end = contig.length - last.end <= edge_margin_bp
     return first.partial or last.partial or near_start or near_end
+
+
+def split_events(
+    contig: Contig, matches: Iterable[GeneMatch], detection: RegionDetection
+) -> tuple[SplitEvent, ...]:
+    """Reference proteins covered by complementary target fragments (spec 9.2, 9.4).
+
+    ``matches`` are a candidate's passing evidence matches. For each reference
+    gene, in order of first appearance, fragments whose unique contribution is
+    at least ``min_split_contribution`` are chosen greedily (largest first,
+    overlap at most ``max_fragment_overlap`` of the shorter). Two or more chosen
+    fragments whose union reaches ``min_reference_gene_coverage`` form a split.
+    """
+    pieces: dict[str, dict[str, list[Interval]]] = {}
+    lengths: dict[str, int] = {}
+    for match in matches:
+        target_pieces = pieces.setdefault(match.reference_gene_id, {})
+        spans = target_pieces.setdefault(match.target_gene_id, [])
+        spans.extend(hsp.query_interval for hsp in match.alignments)
+        lengths[match.reference_gene_id] = match.query_length
+    genes = {gene.id: gene for gene in contig.genes}
+    position = {gene.id: index for index, gene in enumerate(contig.genes)}
+    found = []
+    for reference_id, by_target in pieces.items():
+        merged = {target: merge_intervals(spans) for target, spans in by_target.items()}
+        fragments = _split_fragments(merged, lengths[reference_id], position, detection)
+        if fragments:
+            found.append(_split_event(reference_id, fragments, genes, position))
+    return tuple(found)
+
+
+def _split_fragments(
+    merged: Mapping[str, tuple[Interval, ...]],
+    length: int,
+    position: Mapping[str, int],
+    detection: RegionDetection,
+) -> list[str]:
+    unique = {target: _unique_length(target, merged) for target in merged}
+    candidates = sorted(
+        (
+            part
+            for part in merged.items()
+            if unique[part[0]] / length >= detection.min_split_contribution
+        ),
+        key=lambda part: (-unique[part[0]], position[part[0]]),
+    )
+    chosen = _choose(candidates, detection.max_fragment_overlap)
+    covered = union_length(interval for _, spans in chosen for interval in spans)
+    if len(chosen) < 2 or covered / length < detection.min_reference_gene_coverage:
+        return []
+    return sorted((target for target, _ in chosen), key=position.__getitem__)
+
+
+def _split_event(
+    reference_id: str, fragments: list[str], genes: Mapping[str, Gene], position: Mapping[str, int]
+) -> SplitEvent:
+    first, last = position[fragments[0]], position[fragments[-1]]
+    return SplitEvent(
+        reference_gene_id=reference_id,
+        fragment_ids=tuple(fragments),
+        adjacent=last - first == len(fragments) - 1,
+        same_strand=len({genes[fragment].strand for fragment in fragments}) == 1,
+    )
+
+
+def fusion_events(
+    contig: Contig,
+    matches: Iterable[GeneMatch],
+    families: ReferenceFamilies,
+    detection: RegionDetection,
+) -> tuple[FusionEvent, ...]:
+    """Target proteins aligned to parts of several families (spec 9.3, 9.4).
+
+    ``matches`` are a candidate's passing evidence matches. For each target
+    gene, in genomic order, the aligned target positions are merged per
+    family; parts covering at least ``min_fusion_part_coverage`` of the target
+    protein are chosen greedily, largest first (ties by position), skipping one
+    that overlaps a chosen part by more than ``max_fragment_overlap`` of the
+    shorter. Two or more chosen families form a FusionEvent, listed in order
+    along the protein. Members of one family never make a fusion.
+    """
+    by_target: dict[str, dict[str, list[Interval]]] = {}
+    lengths: dict[str, int] = {}
+    for match in matches:
+        family_id = families.family_of(match.reference_gene_id).id
+        spans = by_target.setdefault(match.target_gene_id, {}).setdefault(family_id, [])
+        spans.extend(hsp.subject_interval for hsp in match.alignments)
+        lengths[match.target_gene_id] = match.subject_length
+    found = []
+    for gene in contig.genes:
+        if gene.id in by_target:
+            fused = _fused_families(by_target[gene.id], lengths[gene.id], detection)
+            if fused:
+                found.append(FusionEvent(gene.id, fused))
+    return tuple(found)
+
+
+def _fused_families(
+    by_family: Mapping[str, list[Interval]], length: int, detection: RegionDetection
+) -> tuple[str, ...]:
+    merged = {family: merge_intervals(spans) for family, spans in by_family.items()}
+    parts = sorted(
+        (
+            part
+            for part in merged.items()
+            if union_length(part[1]) / length >= detection.min_fusion_part_coverage
+        ),
+        key=lambda part: (-union_length(part[1]), part[1][0]),
+    )
+    chosen = _choose(parts, detection.max_fragment_overlap)
+    if len(chosen) < 2:
+        return ()
+    return tuple(family for family, _ in sorted(chosen, key=lambda part: part[1][0]))
+
+
+def _unique_length(target: str, merged: Mapping[str, tuple[Interval, ...]]) -> int:
+    everything = [interval for spans in merged.values() for interval in spans]
+    others = [interval for key, spans in merged.items() if key != target for interval in spans]
+    return union_length(everything) - union_length(others)
+
+
+def _choose(parts: Sequence[Part], max_overlap: float) -> list[Part]:
+    """Greedy choice in the given order, skipping a part that overlaps a chosen one too much."""
+    chosen: list[Part] = []
+    for part in parts:
+        if all(_overlap_fraction(part[1], other[1]) <= max_overlap for other in chosen):
+            chosen.append(part)
+    return chosen
+
+
+def _overlap_fraction(first: tuple[Interval, ...], second: tuple[Interval, ...]) -> float:
+    """Shared length of two interval sets as a fraction of the shorter set."""
+    size_first, size_second = union_length(first), union_length(second)
+    shared = size_first + size_second - union_length((*first, *second))
+    return shared / min(size_first, size_second)

@@ -13,6 +13,7 @@ from homolocus import (
     ScoreComponents,
     ScoringWeights,
 )
+from homolocus.models.cluster import FusionEvent, SplitEvent
 
 
 def gene(start: int, end: int, partial: bool = False, contig_id: str = "t1") -> Gene:
@@ -226,3 +227,68 @@ def test_score_uses_every_weighted_component() -> None:
     parts = ScoreComponents(content=0.2, similarity=0.4, order=0.6, orientation=0.8, spacing=0.5)
     expected = 0.40 * 0.2 + 0.30 * 0.4 + 0.15 * 0.6 + 0.10 * 0.8 + 0.05 * 0.5
     assert make_cluster(components=parts).score == pytest.approx(expected)
+
+
+# Split and fusion events
+
+
+def test_cluster_without_events_has_no_split_or_fusion() -> None:
+    cluster = make_cluster()
+    assert (cluster.splits, cluster.fusions) == ((), ())
+    assert not cluster.potential_split
+    assert not cluster.potential_fusion
+
+
+def test_events_set_the_flags() -> None:
+    split = SplitEvent(REF_1, (EVENT_A.id, INSERT.id), adjacent=True, same_strand=True)
+    fusion = FusionEvent(EVENT_B.id, ("F001", "F002"))
+    cluster = make_cluster(splits=(split,), fusions=(fusion,))
+    assert cluster.potential_split
+    assert cluster.potential_fusion
+    assert cluster.splits == (split,)
+    assert cluster.fusions == (fusion,)
+
+
+@pytest.mark.parametrize(
+    ("fragments", "message"),
+    [((EVENT_A.id,), "at least two fragments"), ((EVENT_A.id, EVENT_A.id), "duplicate")],
+)
+def test_illegal_split_events_are_rejected(fragments: tuple[str, ...], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        SplitEvent(REF_1, fragments, adjacent=False, same_strand=True)
+
+
+def test_split_event_needs_a_reference_gene() -> None:
+    with pytest.raises(ValueError, match="reference gene"):
+        SplitEvent("", (EVENT_A.id, INSERT.id), adjacent=False, same_strand=True)
+
+
+@pytest.mark.parametrize(
+    ("target", "families", "message"),
+    [
+        (EVENT_B.id, ("F001",), "at least two families"),
+        (EVENT_B.id, ("F001", "F001"), "duplicate"),
+        ("", ("F001", "F002"), "target gene"),
+    ],
+)
+def test_illegal_fusion_events_are_rejected(
+    target: str, families: tuple[str, ...], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        FusionEvent(target, families)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (
+            {"splits": (SplitEvent(REF_1, (EVENT_A.id, RIGHT_PAD.id), False, True),)},
+            "split fragment",
+        ),
+        ({"fusions": (FusionEvent(LEFT_PAD.id, ("F001", "F002")),)}, "fusion target"),
+        ({"fusions": (FusionEvent(EVENT_B.id, ("F001", "F009")),)}, "fusion family"),
+    ],
+)
+def test_events_must_refer_to_the_cluster(overrides: dict[str, Any], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        make_cluster(**overrides)
