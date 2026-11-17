@@ -2,12 +2,39 @@
 
 import re
 from dataclasses import dataclass
+from typing import Literal, NewType
 
 from Bio.Data import CodonTable
 from Bio.Data.CodonTable import TranslationError
 from Bio.Seq import Seq
 
 _VALID_SUPPLIED = re.compile(r"[A-Za-z*]+")
+
+CodonStart = Literal[1, 2, 3]
+"""Position of the first base of the first codon (``/codon_start``)."""
+
+TranslationTable = NewType("TranslationTable", int)
+"""An NCBI translation table ID known to Biopython. Build it with parse_translation_table."""
+
+TABLE_11 = TranslationTable(11)
+
+_CODON_STARTS: dict[str, CodonStart] = {"1": 1, "2": 2, "3": 3}
+
+
+def parse_codon_start(text: str | None) -> CodonStart | None:
+    """Parse ``/codon_start``: 1 when absent, None when not 1, 2 or 3."""
+    if text is None:
+        return 1
+    return _CODON_STARTS.get(text)
+
+
+def parse_translation_table(text: str | None) -> TranslationTable | None:
+    """Parse ``/transl_table``: table 11 when absent, None when not a known table."""
+    if text is None:
+        return TABLE_11
+    if not text.isdigit() or int(text) not in CodonTable.unambiguous_dna_by_id:
+        return None
+    return TranslationTable(int(text))
 
 
 @dataclass(frozen=True)
@@ -42,15 +69,15 @@ SuppliedTranslation = Protein | InternalStop | InvalidSupplied
 def translate_cds(
     nucleotides: str,
     *,
-    table: int = 11,
-    codon_start: int = 1,
+    table: TranslationTable = TABLE_11,
+    codon_start: CodonStart = 1,
     complete_5prime: bool = True,
 ) -> Translation:
-    """Translate a CDS given in coding orientation (spec 3.2)."""
-    if codon_start not in (1, 2, 3):
-        return Untranslatable(f"invalid codon_start {codon_start}")
-    if table not in CodonTable.unambiguous_dna_by_id:
-        return Untranslatable(f"unknown translation table {table}")
+    """Translate a CDS given in coding orientation (spec 3.2).
+
+    ``table`` and ``codon_start`` are already valid; parse outside values with
+    parse_translation_table and parse_codon_start.
+    """
     coding = nucleotides[codon_start - 1 :].upper()
     whole_codons = coding[: len(coding) - len(coding) % 3]
     try:
@@ -71,7 +98,7 @@ def check_supplied_translation(text: str) -> SuppliedTranslation:
     return Protein(text)
 
 
-def _is_start_codon(codon: str, table: int) -> bool:
+def _is_start_codon(codon: str, table: TranslationTable) -> bool:
     start_codons: list[str] = CodonTable.unambiguous_dna_by_id[table].start_codons
     return codon in start_codons
 

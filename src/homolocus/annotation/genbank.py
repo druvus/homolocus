@@ -27,6 +27,8 @@ from homolocus.annotation.translation import (
     Translation,
     Untranslatable,
     check_supplied_translation,
+    parse_codon_start,
+    parse_translation_table,
     translate_cds,
 )
 from homolocus.coordinates import to_zero_based
@@ -242,10 +244,10 @@ def _translation(cds: CdsFeature) -> Translation:
         checked = check_supplied_translation(supplied)
         if not isinstance(checked, InvalidSupplied):
             return checked
-    table = _int_qualifier(cds, "transl_table", default=11)
-    codon_start = _int_qualifier(cds, "codon_start", default=1)
+    table = parse_translation_table(cds.qualifier("transl_table"))
+    codon_start = parse_codon_start(cds.qualifier("codon_start"))
     if table is None or codon_start is None:
-        return Untranslatable("malformed /transl_table or /codon_start")
+        return Untranslatable("invalid /transl_table or /codon_start")
     return translate_cds(
         cds.nucleotides,
         table=table,
@@ -279,14 +281,6 @@ def _skipped(cds: CdsFeature, reason: SkipReason) -> SkippedFeature:
         locus_tag=cds.qualifier("locus_tag"),
         reason=reason,
     )
-
-
-def _int_qualifier(cds: CdsFeature, key: str, *, default: int) -> int | None:
-    """Integer qualifier value, ``default`` when absent, None when malformed."""
-    value = cds.qualifier(key)
-    if value is None:
-        return default
-    return int(value) if value.isdigit() else None
 
 
 def _partial(location: Location) -> bool:

@@ -8,6 +8,8 @@ from homolocus.annotation.translation import (
     Protein,
     Untranslatable,
     check_supplied_translation,
+    parse_codon_start,
+    parse_translation_table,
     translate_cds,
 )
 
@@ -17,8 +19,8 @@ def test_complete_cds_drops_trailing_stop() -> None:
 
 
 def test_translation_table_is_respected() -> None:
-    assert translate_cds("ATGTGATAA", table=11) == InternalStop()
-    assert translate_cds("ATGTGATAA", table=4) == Protein("MW")
+    assert translate_cds("ATGTGATAA", table=parse_translation_table("11")) == InternalStop()
+    assert translate_cds("ATGTGATAA", table=parse_translation_table("4")) == Protein("MW")
 
 
 @pytest.mark.parametrize(("codon_start", "prefix"), [(2, "G"), (3, "GG")])
@@ -60,19 +62,29 @@ def test_internal_stop_is_reported() -> None:
     assert translate_cds("ATGTAAAAATAA") == InternalStop()
 
 
-@pytest.mark.parametrize(
-    ("nucleotides", "kwargs"),
-    [
-        ("ATGAZATAA", {}),
-        ("TAA", {}),
-        ("AT", {}),
-        ("ATGAAATAA", {"table": 99}),
-        ("ATGAAATAA", {"codon_start": 4}),
-        ("ATGAAATAA", {"codon_start": 0}),
-    ],
-)
-def test_untranslatable_input(nucleotides: str, kwargs: dict[str, int]) -> None:
-    assert isinstance(translate_cds(nucleotides, **kwargs), Untranslatable)
+@pytest.mark.parametrize("nucleotides", ["ATGAZATAA", "TAA", "AT"])
+def test_untranslatable_input(nucleotides: str) -> None:
+    assert isinstance(translate_cds(nucleotides), Untranslatable)
+
+
+@pytest.mark.parametrize(("text", "expected"), [(None, 1), ("1", 1), ("2", 2), ("3", 3)])
+def test_parse_codon_start(text: str | None, expected: int) -> None:
+    assert parse_codon_start(text) == expected
+
+
+@pytest.mark.parametrize("text", ["x", "", "0", "4", "-1", "1.0"])
+def test_parse_codon_start_rejects_invalid_values(text: str) -> None:
+    assert parse_codon_start(text) is None
+
+
+@pytest.mark.parametrize(("text", "expected"), [(None, 11), ("11", 11), ("4", 4), ("1", 1)])
+def test_parse_translation_table(text: str | None, expected: int) -> None:
+    assert parse_translation_table(text) == expected
+
+
+@pytest.mark.parametrize("text", ["x", "", "0", "99", "-11"])
+def test_parse_translation_table_rejects_invalid_values(text: str) -> None:
+    assert parse_translation_table(text) is None
 
 
 def test_supplied_translation_is_trusted() -> None:

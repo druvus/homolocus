@@ -239,11 +239,14 @@ def test_reverse_five_prime_end_decides_alternative_start(
     assert only_gene(genome).protein_sequence == protein
 
 
-@pytest.mark.parametrize("qualifier", ["codon_start", "transl_table"])
-def test_malformed_numeric_qualifier_gives_untranslatable_gene(
-    write_genbank, make_record, qualifier
+@pytest.mark.parametrize(
+    ("qualifier", "value"),
+    [("codon_start", "x"), ("codon_start", "4"), ("transl_table", "x"), ("transl_table", "99")],
+)
+def test_invalid_numeric_qualifier_gives_untranslatable_gene(
+    write_genbank, make_record, qualifier, value
 ) -> None:
-    genome = read(write_genbank, make_record, cds(0, 12, **{qualifier: "x"}))
+    genome = read(write_genbank, make_record, cds(0, 12, **{qualifier: value}))
     assert only_gene(genome).protein_sequence is None
 
 
