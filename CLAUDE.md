@@ -9,6 +9,7 @@ The package lives in `src/homolocus/`. Open source, MIT licensed.
 - Tests: `pytest -m "not diamond"` (fast). Full: `pytest` (needs the `diamond` executable).
 - Lint/format: `ruff check --fix` and `ruff format`
 - Types: `mypy src`
+- CI: `.github/workflows/tests.yml` runs lint, types and the full tests (Python 3.10–3.13, DIAMOND pinned by version and SHA-256). Upgrading DIAMOND means changing both values there.
 - Quality gates (spec 17). The tools are optional external checkouts next to this repo (`../crapper`, `../dryer`, `../mutator`):
   - CRAP below 10 per function: `../crapper/crapper src`
   - No duplication at 0.8 or above: `../dryer/dryer --threshold 0.8 src`
