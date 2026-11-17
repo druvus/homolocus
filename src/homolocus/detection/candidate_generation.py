@@ -7,6 +7,7 @@ so far, so nested or overlapping genes never shorten a candidate.
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from homolocus.config import RegionDetection
 from homolocus.models.contig import Contig
 from homolocus.models.gene import Gene, genomic_order
 
@@ -86,3 +87,45 @@ def _joins(
 ) -> bool:
     intervening = position[event.id] - position[chain.events[-1].id] - 1
     return intervening <= max_genes and max(event.start - chain.reach, 0) <= max_gap
+
+
+def windows(
+    contig: Contig, events: Iterable[Gene], config: RegionDetection
+) -> tuple[EventWindow, ...]:
+    """Candidate windows on one contig, ordered by start then end (spec 7.3).
+
+    A chain whose span is at most ``max_region_bp`` is one window. A longer
+    chain is split: each event anchors a window that extends right while the
+    span stays within the limit, and windows contained in another are dropped.
+    """
+    found: list[tuple[Gene, ...]] = []
+    for chain in chains(
+        contig,
+        events,
+        max_intervening_genes=config.max_intervening_genes,
+        max_inter_match_bp_gap=config.max_inter_match_bp_gap,
+    ):
+        found.extend(_split(chain, config.max_region_bp))
+    kept = [EventWindow(contig.id, group) for group in _maximal(found)]
+    return tuple(sorted(kept, key=lambda window: (window.start, window.end, window.event_ids)))
+
+
+def _split(chain: tuple[Gene, ...], max_region_bp: int) -> list[tuple[Gene, ...]]:
+    groups: list[tuple[Gene, ...]] = []
+    for anchor, first in enumerate(chain):
+        group: tuple[Gene, ...] = (first,)
+        for event in chain[anchor + 1 :]:
+            if _span((*group, event)) > max_region_bp:
+                break
+            group = (*group, event)
+        groups.append(group)
+    return groups
+
+
+def _span(events: tuple[Gene, ...]) -> int:
+    return max(event.end for event in events) - events[0].start
+
+
+def _maximal(groups: list[tuple[Gene, ...]]) -> list[tuple[Gene, ...]]:
+    unique = list({frozenset(g.id for g in group): group for group in groups}.items())
+    return [group for ids, group in unique if not any(ids < other for other, _ in unique)]

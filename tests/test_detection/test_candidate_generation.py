@@ -1,9 +1,11 @@
 """Chains, windows and padding on one contig (spec 7.3, 7.4, 10)."""
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
-from homolocus import Contig, Gene
-from homolocus.detection.candidate_generation import EventWindow, chains
+from homolocus import Contig, Gene, RegionDetection
+from homolocus.detection.candidate_generation import EventWindow, chains, windows
 
 
 def gene(start: int, end: int, contig_id: str = "t1", strand: int = 1) -> Gene:
@@ -105,3 +107,103 @@ def test_event_must_be_a_gene_of_the_contig() -> None:
             max_intervening_genes=1,
             max_inter_match_bp_gap=1,
         )
+
+
+# Windows
+
+
+def window_ids(contig: Contig, events, **config) -> list[tuple[str, ...]]:
+    return [w.event_ids for w in windows(contig, events, RegionDetection(**config))]
+
+
+def spaced(count: int, step: int = 3000, length: int = 1000) -> list[Gene]:
+    return [gene(n * step, n * step + length) for n in range(count)]
+
+
+def test_chain_within_max_region_is_one_window() -> None:
+    events = spaced(4)
+    assert window_ids(contig_of(*events), events, max_region_bp=10_000) == [
+        tuple(g.id for g in events)
+    ]
+
+
+def test_max_region_is_inclusive() -> None:
+    events = spaced(4)  # span 0..10_000
+    assert len(window_ids(contig_of(*events), events, max_region_bp=10_000)) == 1
+    assert len(window_ids(contig_of(*events), events, max_region_bp=9_999)) > 1
+
+
+def test_long_chain_is_split_into_maximal_windows() -> None:
+    a, b, c, d, e = spaced(5)  # events every 3 kb, 1 kb long
+    found = window_ids(contig_of(a, b, c, d, e), (a, b, c, d, e), max_region_bp=7_000)
+    assert found == [(a.id, b.id, c.id), (b.id, c.id, d.id), (c.id, d.id, e.id)]
+
+
+def test_windows_contained_in_another_window_are_dropped() -> None:
+    a, b, c = gene(0, 1000), gene(2000, 9000), gene(9500, 10_000)
+    found = window_ids(contig_of(a, b, c), (a, b, c), max_region_bp=9_000)
+    assert found == [(a.id, b.id), (b.id, c.id)]
+
+
+def test_single_event_longer_than_max_region_is_its_own_window() -> None:
+    huge, small = gene(0, 60_000), gene(61_000, 62_000)
+    found = window_ids(contig_of(huge, small), (huge, small), max_region_bp=50_000)
+    assert found == [(huge.id,), (small.id,)]
+
+
+def test_separate_chains_give_separate_windows_in_order() -> None:
+    a, b, c, d = gene(0, 1000), gene(2000, 3000), gene(60_000, 61_000), gene(62_000, 63_000)
+    found = window_ids(contig_of(a, b, c, d), (d, c, b, a), max_inter_match_bp_gap=20_000)
+    assert found == [(a.id, b.id), (c.id, d.id)]
+
+
+def test_chain_limits_come_from_the_configuration() -> None:
+    a, x, b = gene(0, 1000), gene(1500, 1800), gene(2000, 3000)
+    contig = contig_of(a, x, b)
+    assert len(window_ids(contig, (a, b), max_intervening_genes=0)) == 2
+    assert len(window_ids(contig, (a, b), max_intervening_genes=1)) == 1
+
+
+def test_no_events_give_no_windows() -> None:
+    assert window_ids(contig_of(gene(0, 100)), ()) == []
+
+
+@st.composite
+def contig_with_events(draw):
+    lengths = draw(st.lists(st.integers(100, 3000), min_size=1, max_size=25))
+    gaps = draw(st.lists(st.integers(-50, 8000), min_size=len(lengths), max_size=len(lengths)))
+    genes, position = [], 0
+    for length, gap in zip(lengths, gaps, strict=True):
+        start = max(position + gap, 0)
+        genes.append(gene(start, start + length))
+        position = start + length
+    flags = draw(st.lists(st.booleans(), min_size=len(genes), max_size=len(genes)))
+    events = [g for g, chosen in zip(genes, flags, strict=True) if chosen]
+    unique = list({g.id: g for g in genes}.values())
+    return contig_of(*unique, length=position + 1), [g for g in events if g in unique]
+
+
+@settings(max_examples=150, deadline=None)
+@given(
+    contig_with_events(),
+    st.integers(500, 20_000),
+    st.integers(0, 5),
+    st.integers(0, 10_000),
+)
+def test_window_properties(case, max_region, max_genes, max_gap) -> None:
+    contig, events = case
+    config = RegionDetection(
+        max_region_bp=max_region,
+        max_intervening_genes=max_genes,
+        max_inter_match_bp_gap=max_gap,
+    )
+    found = windows(contig, events, config)
+    event_sets = [set(w.event_ids) for w in found]
+    assert {g.id for g in events} == set().union(*event_sets)
+    assert all(w.span <= max_region or len(w.events) == 1 for w in found)
+    assert not any(
+        i != j and left <= right
+        for i, left in enumerate(event_sets)
+        for j, right in enumerate(event_sets)
+    )
+    assert [(w.start, w.end) for w in found] == sorted((w.start, w.end) for w in found)
