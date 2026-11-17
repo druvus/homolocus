@@ -79,3 +79,52 @@ class FamilyGrouping:
     def enabled(self) -> bool:
         """Whether paralogs are grouped at all."""
         return self.family_min_identity is not None
+
+
+_DETECTION_FRACTIONS = (
+    "min_reference_coverage",
+    "min_reference_gene_coverage",
+    "min_event_coverage",
+    "max_candidate_overlap",
+)
+_DETECTION_NON_NEGATIVE = (
+    "max_intervening_genes",
+    "max_inter_match_bp_gap",
+    "padding_genes",
+    "padding_bp",
+    "edge_margin_bp",
+)
+
+
+@dataclass(frozen=True)
+class RegionDetection:
+    """Candidate generation and detection thresholds (spec 7.5, 10).
+
+    Coverages and ``max_candidate_overlap`` are fractions. ``min_matches``
+    counts distinct represented families and must be at least 2. Distances
+    are in base pairs or genes; ``max_region_bp`` applies to the unpadded span.
+    """
+
+    min_matches: int = 3
+    min_reference_coverage: float = 0.3
+    min_reference_gene_coverage: float = 0.5
+    min_event_coverage: float = 0.5
+    max_intervening_genes: int = 10
+    max_inter_match_bp_gap: int = 20_000
+    max_region_bp: int = 50_000
+    max_candidate_overlap: float = 0.5
+    padding_genes: int = 0
+    padding_bp: int = 0
+    edge_margin_bp: int = 500
+
+    def __post_init__(self) -> None:
+        if self.min_matches < 2:
+            raise ValueError(f"min_matches {self.min_matches} must be at least 2")
+        if self.max_region_bp < 1:
+            raise ValueError(f"max_region_bp {self.max_region_bp} must be at least 1")
+        for name in _DETECTION_FRACTIONS:
+            if not 0 <= getattr(self, name) <= 1:
+                raise ValueError(f"{name} {getattr(self, name)} is not a fraction")
+        for name in _DETECTION_NON_NEGATIVE:
+            if getattr(self, name) < 0:
+                raise ValueError(f"{name} {getattr(self, name)} must not be negative")

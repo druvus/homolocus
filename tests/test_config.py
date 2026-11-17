@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from homolocus import DiamondSearch, FamilyGrouping
+from homolocus import DiamondSearch, FamilyGrouping, RegionDetection
 
 
 def test_defaults_match_the_specification() -> None:
@@ -86,3 +86,59 @@ def test_invalid_family_grouping_is_rejected(overrides: dict[str, Any], message:
 def test_grouping_is_disabled_when_identity_is_none() -> None:
     assert not FamilyGrouping(family_min_identity=None).enabled
     assert FamilyGrouping().enabled
+
+
+def test_region_detection_defaults() -> None:
+    config = RegionDetection()
+    assert (config.min_matches, config.min_reference_coverage) == (3, 0.3)
+    assert (config.min_reference_gene_coverage, config.min_event_coverage) == (0.5, 0.5)
+    assert (config.max_intervening_genes, config.max_inter_match_bp_gap) == (10, 20_000)
+    assert (config.max_region_bp, config.max_candidate_overlap) == (50_000, 0.5)
+    assert (config.padding_genes, config.padding_bp, config.edge_margin_bp) == (0, 0, 500)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"min_matches": 2},
+        {"min_reference_coverage": 0.0, "min_reference_gene_coverage": 1.0},
+        {"min_event_coverage": 0.0, "max_candidate_overlap": 1.0},
+        {"max_intervening_genes": 0, "max_inter_match_bp_gap": 0},
+        {"max_region_bp": 1, "padding_genes": 0, "padding_bp": 0, "edge_margin_bp": 0},
+    ],
+)
+def test_region_detection_boundaries_are_allowed(overrides: dict[str, Any]) -> None:
+    config = RegionDetection(**overrides)
+    assert all(getattr(config, key) == value for key, value in overrides.items())
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "min_reference_coverage",
+        "min_reference_gene_coverage",
+        "min_event_coverage",
+        "max_candidate_overlap",
+    ],
+)
+@pytest.mark.parametrize("value", [-0.01, 1.01])
+def test_region_detection_fractions_are_checked(field: str, value: float) -> None:
+    with pytest.raises(ValueError, match=field):
+        RegionDetection(**{field: value})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("min_matches", 1),
+        ("max_intervening_genes", -1),
+        ("max_inter_match_bp_gap", -1),
+        ("max_region_bp", 0),
+        ("padding_genes", -1),
+        ("padding_bp", -1),
+        ("edge_margin_bp", -1),
+    ],
+)
+def test_region_detection_counts_are_checked(field: str, value: int) -> None:
+    with pytest.raises(ValueError, match=field):
+        RegionDetection(**{field: value})
