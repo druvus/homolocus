@@ -8,10 +8,17 @@ and the dataclass defaults apply. Coordinates on the command line are
 
 import argparse
 import dataclasses
+import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, get_args, get_origin, get_type_hints
 
 from homolocus.config import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
+from homolocus.finder import RegionFinder
+from homolocus.models.genome import Genome
+from homolocus.models.reference import ReferenceRegion
+from homolocus.results import RegionResults
+from homolocus.search.diamond import DiamondError
 
 OPTION_HELP = {
     "evalue": "pair-level E-value threshold",
@@ -64,6 +71,28 @@ class FinderSettings:
     scoring: ScoringWeights
 
 
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run ``homolocus``; returns the exit code (spec 13).
+
+    Usage errors and invalid settings exit with 2 through argparse. Input
+    and run failures print one line to stderr and return 1.
+    """
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if (args.start is None) != (args.end is None):
+        parser.error("--start and --end must be given together")
+    try:
+        settings = finder_settings(args)
+    except ValueError as error:
+        parser.error(str(error))
+    try:
+        _find(args, settings)
+    except (OSError, ValueError, DiamondError) as error:
+        sys.stderr.write(f"homolocus: error: {error}\n")
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The ``homolocus`` argument parser with its ``find`` command."""
     parser = argparse.ArgumentParser(prog="homolocus", description=__doc__.splitlines()[0])
@@ -86,6 +115,23 @@ def finder_settings(args: argparse.Namespace) -> FinderSettings:
         detection=RegionDetection(**_given(args, RegionDetection, "")),
         scoring=ScoringWeights(**_given(args, ScoringWeights, "weight_")),
     )
+
+
+def _find(args: argparse.Namespace, settings: FinderSettings) -> RegionResults:
+    reference = ReferenceRegion.from_genbank(
+        args.reference, contig=args.contig, start=args.start, end=args.end
+    )
+    genome = Genome.from_file(args.genome, annotation=args.annotation)
+    finder = RegionFinder(
+        reference,
+        search=settings.search,
+        family_grouping=settings.family_grouping,
+        detection=settings.detection,
+        scoring=settings.scoring,
+    )
+    results = finder.find(genome)
+    results.write(args.output)
+    return results
 
 
 def _add_inputs(parser: argparse.ArgumentParser) -> None:

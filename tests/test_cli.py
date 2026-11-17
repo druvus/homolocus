@@ -1,11 +1,21 @@
 """Command-line interface: ``homolocus find`` (spec 13)."""
 
 import dataclasses
+from pathlib import Path
 
 import pytest
+from Bio import SeqIO
+from Bio.SeqFeature import FeatureLocation, SeqFeature
 
-from homolocus import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
-from homolocus.cli import FinderSettings, build_parser, finder_settings
+from homolocus import (
+    DiamondSearch,
+    FamilyGrouping,
+    RegionDetection,
+    RegionFinder,
+    ScoringWeights,
+)
+from homolocus.cli import FinderSettings, build_parser, finder_settings, main
+from sample_world import results as sample_results
 
 REQUIRED = ["find", "--reference", "ref.gbk", "--genome", "target.fna", "--output", "out"]
 CONFIGS = (
@@ -117,3 +127,97 @@ def test_top_level_help_describes_the_tool(capsys) -> None:
     with pytest.raises(SystemExit):
         build_parser().parse_args(["--help"])
     assert "homolocus find" in capsys.readouterr().out
+
+
+def genbank(path, record_id, dna, make_record, n_genes=3):
+    """A record of ``n_genes`` forward ORFs separated by 60 random bases."""
+    parts, features, position = [], [], 60
+    parts.append(dna.random(60))
+    for _ in range(n_genes):
+        orf = dna.orf(150)
+        features.append(SeqFeature(FeatureLocation(position, position + len(orf), 1), type="CDS"))
+        parts += [orf, dna.random(60)]
+        position += len(orf) + 60
+    SeqIO.write([make_record(record_id, "".join(parts), features)], path, "genbank")
+    return path
+
+
+@pytest.fixture
+def inputs(tmp_path, dna, make_record):
+    """Command-line arguments for a readable GenBank reference and target."""
+    reference = genbank(tmp_path / "ref.gbk", "ref", dna, make_record)
+    target = genbank(tmp_path / "target.gbk", "t1", dna, make_record)
+    output = tmp_path / "out"
+    return ["find", "--reference", str(reference), "--genome", str(target), "--output", str(output)]
+
+
+@pytest.fixture
+def finder_calls(monkeypatch):
+    """Replace the search with the sample results and record each RegionFinder used."""
+    calls = []
+
+    def fake_find(finder, genome):
+        calls.append((finder, genome))
+        return sample_results()
+
+    monkeypatch.setattr(RegionFinder, "find", fake_find)
+    return calls
+
+
+def test_find_reads_inputs_runs_the_finder_and_writes_the_output(inputs, finder_calls) -> None:
+    assert main([*inputs, "--min-identity", "40", "--no-family-grouping"]) == 0
+    ((finder, genome),) = finder_calls
+    assert finder.reference.contig_id == "ref"
+    assert len(finder.reference.genes) == 3
+    assert finder.search.min_identity == 40.0
+    assert finder.family_grouping.family_min_identity is None
+    assert len(list(genome.genes())) == 3
+    output = inputs[-1]
+    for name in ("summary.tsv", "analysis.json", "plots/regions.png"):
+        assert (Path(output) / name).is_file()
+
+
+def test_reference_coordinates_are_one_based(inputs, finder_calls) -> None:
+    assert main([*inputs, "--contig", "ref", "--start", "61", "--end", "516"]) == 0
+    ((finder, _),) = finder_calls
+    assert (finder.reference.start, finder.reference.end) == (60, 516)
+    assert len(finder.reference.genes) == 1
+
+
+def test_start_without_end_is_a_usage_error(inputs, finder_calls, capsys) -> None:
+    with pytest.raises(SystemExit) as stopped:
+        main([*inputs, "--start", "61"])
+    assert stopped.value.code == 2
+    assert "--start and --end" in capsys.readouterr().err
+    assert finder_calls == []
+
+
+def test_an_invalid_setting_is_a_usage_error(inputs, finder_calls, capsys) -> None:
+    with pytest.raises(SystemExit) as stopped:
+        main([*inputs, "--min-matches", "1"])
+    assert stopped.value.code == 2
+    assert "min_matches 1 must be at least 2" in capsys.readouterr().err
+    assert finder_calls == []
+
+
+def test_an_unreadable_input_fails_with_a_one_line_error(inputs, tmp_path, capsys) -> None:
+    missing = str(tmp_path / "missing.gbk")
+    assert main([*inputs, "--reference", missing]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("homolocus: error: ")
+    assert "missing.gbk" in err
+    assert "Traceback" not in err
+    assert len(err.splitlines()) == 1
+
+
+def test_an_invalid_region_fails_with_a_one_line_error(inputs, capsys) -> None:
+    assert main([*inputs, "--start", "500", "--end", "100"]) == 1
+    assert capsys.readouterr().err.startswith("homolocus: error: ")
+
+
+def test_missing_diamond_fails_with_a_one_line_error(inputs, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("PATH", "")
+    assert main(inputs) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("homolocus: error: ")
+    assert "DIAMOND" in err
