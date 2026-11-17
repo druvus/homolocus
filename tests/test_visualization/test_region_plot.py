@@ -1,11 +1,13 @@
 """Rendering plots with Matplotlib (spec 11)."""
 
 import pytest
+from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon, Rectangle
 
 from homolocus.visualization.layout import GeneGlyph, detail_tracks, overview_tracks
 from homolocus.visualization.region_plot import (
+    SURFACE,
     arrow_polygon,
     candidate_figure,
     overview_figure,
@@ -68,6 +70,7 @@ def test_axes_are_recessive_with_plain_ticks_and_a_frameless_legend() -> None:
     assert not figure.axes[0].spines["left"].get_visible()
     assert figure.axes[0].xaxis.get_major_formatter().get_useOffset() is False
     assert not figure.legends[0].get_frame_on()
+    assert {axis.get_facecolor() for axis in figure.axes} == {to_rgba(SURFACE)}
 
 
 def test_component_values_are_printed_just_right_of_their_bars() -> None:
@@ -87,7 +90,9 @@ def test_overview_has_one_axis_per_track_with_arrows_titles_and_notes() -> None:
     for axis, track in zip(figure.axes, tracks, strict=True):
         assert axis.get_title(loc="left") == track.title
         assert len([p for p in axis.patches if isinstance(p, Polygon)]) == len(track.glyphs)
-        assert axis.get_xlim() == (track.start, track.end)
+        pad = 0.01 * (track.end - track.start + 1)
+        assert axis.get_xlim() == pytest.approx((track.start - pad, track.end + pad))
+        assert all(track.start <= tick <= track.end for tick in axis.get_xticks())
     texts = [t.get_text() for t in figure.axes[1].texts]
     assert "missing: F004" in texts
     assert "F001" in texts

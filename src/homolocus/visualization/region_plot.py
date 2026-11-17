@@ -28,6 +28,7 @@ COMPONENTS = ("content", "similarity", "order", "orientation", "spacing")
 _ARROW_HEIGHT = 0.6
 _HEAD_SHARE_OF_GENE = 0.3
 _HEAD_SHARE_OF_AXIS = 0.015
+_PAD_SHARE_OF_AXIS = 0.01
 
 
 def arrow_polygon(glyph: GeneGlyph, *, axis_span: int) -> list[tuple[float, float]]:
@@ -97,7 +98,9 @@ def _draw_track(axis: Axes, track: Track) -> None:
             axis.text(
                 middle, 0.48, glyph.label, ha="center", va="bottom", fontsize=7, color=TEXT_PRIMARY
             )
-    axis.set_xlim(track.start, track.end)
+    pad = _PAD_SHARE_OF_AXIS * span
+    axis.set_xlim(track.start - pad, track.end + pad)
+    axis.set_xticks([t for t in axis.get_xticks() if track.start <= t <= track.end])
     axis.set_ylim(-0.9, 1.0)
     axis.set_title(track.title, loc="left", fontsize=9, color=TEXT_PRIMARY)
     if track.note:
@@ -124,6 +127,7 @@ def _draw_components(axis: Axes, values: Sequence[float]) -> None:
     axis.set_yticks(positions, labels=list(COMPONENTS), fontsize=8, color=TEXT_PRIMARY)
     axis.invert_yaxis()
     axis.set_xlim(0.0, 1.0)
+    axis.set_facecolor(SURFACE)
     axis.tick_params(axis="x", colors=TEXT_SECONDARY, labelsize=8)
     axis.set_title("score components", loc="left", fontsize=9, color=TEXT_PRIMARY)
     for side in ("top", "right"):
