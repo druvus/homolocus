@@ -1,7 +1,7 @@
-# Genomic Region — v0.1 Specification
+# homolocus — v0.1 Specification
 
 Status: Working specification (revision 2)
-Package name: `genomic-region`
+Package name: `homolocus`
 Python: 3.10+
 Build backend: Hatchling
 Primary use case: Identify and visualize a homologous genomic region in a bacterial genome using the proteins encoded by a reference region.
@@ -656,7 +656,7 @@ Plotting consumes `Cluster` and result models. It never reruns searches or detec
 ## 12. Python API
 
 ```python
-from genomic_region import Genome, ReferenceRegion, RegionFinder
+from homolocus import Genome, ReferenceRegion, RegionFinder
 
 reference = ReferenceRegion.from_genbank(
     "ecoli.gb", contig="NC_000913.3", start=1_900_000, end=1_920_000,
@@ -683,13 +683,13 @@ The API exposes intermediate models (alignments, matches, families, candidates, 
 A thin wrapper over the Python API with no duplicated logic.
 
 ```
-genomic-region find \
+homolocus find \
     --reference ecoli.gb --contig NC_000913.3 --start 1900000 --end 1920000 \
     --genome target.fna --output results/
 ```
 
 ```
-genomic-region find --reference ecoli_pai.gbk --genome target.gbk --output results/
+homolocus find --reference ecoli_pai.gbk --genome target.gbk --output results/
 ```
 
 `--start` and `--end` are 1-based inclusive. The CLI exposes DIAMOND thresholds, `max_target_seqs`, detection thresholds, family grouping, scoring weights and padding. A configuration file is not required in v0.1.
@@ -729,7 +729,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "genomic-region"
+name = "homolocus"
 version = "0.1.0"
 description = "Reference-guided genomic region reconstruction and visualization"
 requires-python = ">=3.10"
@@ -739,7 +739,7 @@ dependencies = ["biopython", "pandas", "matplotlib", "pyrodigal"]
 dev = ["pytest", "ruff"]
 
 [project.scripts]
-genomic-region = "genomic_region.cli:main"
+homolocus = "homolocus.cli:main"
 ```
 
 - Mandatory: Biopython, pandas, Matplotlib, Pyrodigal.
@@ -752,12 +752,12 @@ genomic-region = "genomic_region.cli:main"
 ## 16. Package structure
 
 ```
-genomic-region/
+homolocus/
 ├── pyproject.toml
 ├── README.md
 ├── SPECIFICATION.md
 ├── AGENTS.md
-├── src/genomic_region/
+├── src/homolocus/
 │   ├── __init__.py
 │   ├── cli.py
 │   ├── finder.py
