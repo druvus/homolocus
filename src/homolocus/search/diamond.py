@@ -5,6 +5,9 @@ into Alignment models with canonical gene IDs and internal coordinates.
 """
 
 import re
+import shutil
+import subprocess
+import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -165,3 +168,67 @@ def parse_version(text: str) -> str:
     if (major, minor) < MINIMUM_VERSION:
         raise DiamondError(f"DIAMOND 2.0 or newer is required; found {version}")
     return version
+
+
+def diamond_version(executable: str = "diamond") -> str:
+    """Installed DIAMOND version. Raises if DIAMOND is missing or older than 2.0."""
+    return parse_version(_run([_resolve(executable), "version"]))
+
+
+def search(
+    index: ProteinIndex,
+    config: DiamondSearch,
+    raw_output: str | Path,
+    *,
+    self_search: bool = False,
+    executable: str = "diamond",
+) -> tuple[Alignment, ...]:
+    """Search reference proteins against target proteins, or against themselves.
+
+    DIAMOND's tabular output is written unchanged to ``raw_output``; an empty
+    file is written when one side has no searchable protein. In a self-search
+    (``self_search=True``) hits of a protein to itself are dropped (spec 6.5).
+    """
+    raw = Path(raw_output)
+    subjects = index.reference_fasta() if self_search else index.target_fasta()
+    if not index.reference_fasta() or not subjects:
+        raw.write_text("", encoding="utf-8")
+        return ()
+    program = _resolve(executable)
+    diamond_version(program)
+    with tempfile.TemporaryDirectory(prefix="homolocus-diamond-") as workdir:
+        query_fasta = _write(Path(workdir) / "queries.faa", index.reference_fasta())
+        subject_fasta = _write(Path(workdir) / "subjects.faa", subjects)
+        database = Path(workdir) / "subjects"
+        _run(makedb_command(program, subject_fasta, database, config))
+        _run(blastp_command(program, query_fasta, database, raw, config))
+    alignments = parse_tabular(raw.read_text(encoding="utf-8").splitlines(), index)
+    if self_search:
+        return tuple(a for a in alignments if a.query_id != a.subject_id)
+    return alignments
+
+
+def _write(path: Path, text: str) -> Path:
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _resolve(executable: str) -> str:
+    path = shutil.which(executable)
+    if path is None:
+        raise DiamondNotFoundError(
+            f"DIAMOND executable {executable!r} not found on PATH; install DIAMOND 2.0 or newer"
+        )
+    return path
+
+
+def _run(command: list[str]) -> str:
+    try:
+        completed = subprocess.run(command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as error:
+        raise DiamondError(
+            f"DIAMOND {command[1]} failed (exit {error.returncode}): {error.stderr.strip()}"
+        ) from error
+    except OSError as error:
+        raise DiamondError(f"could not run DIAMOND {command[1]}: {error}") from error
+    return completed.stdout
