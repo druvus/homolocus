@@ -165,3 +165,47 @@ def test_items_pair_each_name_with_its_results() -> None:
         ("b", "b"),
         ("c", "c"),
     ]
+
+
+def files(root) -> dict[str, bytes]:
+    return {
+        str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()
+    }
+
+
+def test_write_gives_each_genome_its_folder_plus_a_combined_summary_and_plot(tmp_path) -> None:
+    three_genomes().write(tmp_path / "out")
+    written = files(tmp_path / "out")
+    top = sorted(name for name in written if "/" not in name or name.startswith("plots/"))
+    assert top == ["plots/regions.png", "summary.tsv"]
+    assert sorted({name.split("/")[0] for name in written} - {"plots", "summary.tsv"}) == [
+        "a",
+        "b",
+        "c",
+    ]
+    named("a").write(tmp_path / "alone")
+    alone = files(tmp_path / "alone")
+    assert {n[2:]: b for n, b in written.items() if n.startswith("a/")} == alone
+    assert "b/summary.tsv" in written
+    assert not [n for n in written if n.startswith("b/candidates/candidate_")]
+
+
+def test_combined_summary_matches_the_combined_frame(tmp_path) -> None:
+    found = three_genomes()
+    found.write(tmp_path)
+    lines = (tmp_path / "summary.tsv").read_text().splitlines()
+    assert lines[0].split("\t") == ["genome", *SUMMARY_COLUMNS]
+    assert [line.split("\t")[:3] for line in lines[1:]] == [
+        ["a", "1", "candidate_001"],
+        ["a", "2", "candidate_002"],
+        ["c", "1", "candidate_001"],
+        ["c", "2", "candidate_002"],
+    ]
+
+
+def test_writing_a_genome_set_twice_gives_identical_bytes(tmp_path) -> None:
+    three_genomes().write(tmp_path / "x")
+    first = files(tmp_path / "x")
+    three_genomes().write(tmp_path / "x")
+    three_genomes().write(tmp_path / "y")
+    assert files(tmp_path / "x") == first == files(tmp_path / "y")

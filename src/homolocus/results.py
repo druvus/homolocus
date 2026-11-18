@@ -197,6 +197,12 @@ class GenomeSetResults:
                 return results
         raise KeyError(name)
 
+    def write(self, output_dir: str | Path) -> None:
+        """Write one directory per genome plus a combined summary and plot (spec 14)."""
+        from homolocus.output import write_genome_set  # noqa: PLC0415
+
+        write_genome_set(self, output_dir)
+
     def plot(self) -> "Figure":
         """Combined overview: the reference, then every genome's candidates (spec 11)."""
         from homolocus.visualization.region_plot import genome_set_figure  # noqa: PLC0415
