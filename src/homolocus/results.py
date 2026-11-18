@@ -4,6 +4,7 @@ Row layouts live here once and feed both the data frames and the TSV files.
 User-facing coordinates are 1-based inclusive (spec 4).
 """
 
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -150,6 +151,64 @@ class RegionResults:
         from homolocus.visualization.region_plot import candidate_figure  # noqa: PLC0415
 
         return candidate_figure(self, rank)
+
+
+@dataclass(frozen=True)
+class GenomeSetResults:
+    """Results of one run over several target genomes, in input order (spec 12).
+
+    Genome names are unique and usable as directory names (spec 5.3).
+    """
+
+    results: tuple[RegionResults, ...]
+
+    def __post_init__(self) -> None:
+        check_genome_names(r.genome.name for r in self.results)
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """Genome names in input order."""
+        return tuple(_name(r) for r in self.results)
+
+    def __iter__(self) -> Iterator[RegionResults]:
+        return iter(self.results)
+
+    def __len__(self) -> int:
+        return len(self.results)
+
+    def __getitem__(self, name: str) -> RegionResults:
+        """The results of the genome called ``name``. Raises KeyError otherwise."""
+        for results in self.results:
+            if results.genome.name == name:
+                return results
+        raise KeyError(name)
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Every candidate of every genome, ``genome`` first (spec 12, 14)."""
+        rows = [
+            {"genome": _name(results), **_summary_row(rank, cluster)}
+            for results in self.results
+            for rank, cluster in enumerate(results.candidates, 1)
+        ]
+        frame: pd.DataFrame = pd.DataFrame(rows, columns=["genome", *SUMMARY_COLUMNS])
+        return frame
+
+
+def check_genome_names(names: Iterable[str | None]) -> None:
+    """Reject missing, duplicate or directory-unsafe genome names (spec 5.3)."""
+    seen: set[str] = set()
+    for name in names:
+        if not name:
+            raise ValueError("a genome has no name; give each genome a unique name")
+        if "/" in name or name.startswith("."):
+            raise ValueError(f"genome name {name!r} is not usable as a directory name")
+        if name in seen:
+            raise ValueError(f"duplicate genome name {name!r}; genome names must be unique")
+        seen.add(name)
+
+
+def _name(results: RegionResults) -> str:
+    return results.genome.name or ""
 
 
 _EMPTY_MATCH: Row = {

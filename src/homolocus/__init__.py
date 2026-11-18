@@ -11,7 +11,7 @@ from homolocus.models.gene_match import GeneMatch
 from homolocus.models.genome import Genome
 from homolocus.models.reference import ReferenceRegion
 from homolocus.models.skipped_feature import SkippedFeature, SkipReason
-from homolocus.results import RegionResults
+from homolocus.results import GenomeSetResults, RegionResults
 
 __all__ = [
     "Alignment",
@@ -23,6 +23,7 @@ __all__ = [
     "Gene",
     "GeneFamily",
     "GeneMatch",
+    "GenomeSetResults",
     "Genome",
     "ReferenceFamilies",
     "ReferenceRegion",
