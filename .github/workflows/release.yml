@@ -1,0 +1,42 @@
+name: Release
+
+# Publishes to PyPI when a v* tag is pushed (spec 15). Before the first
+# release, add a Trusted Publisher on PyPI (workflow release.yml,
+# environment pypi) and create the pypi environment on GitHub.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, tests and build
+    uses: ./.github/workflows/tests.yml
+
+  publish:
+    name: Publish to PyPI
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/homolocus/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - name: Check the tag matches the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls dist
+          version="${TAG#v}"
+          for file in "dist/homolocus-${version}.tar.gz" "dist/homolocus-${version}-py3-none-any.whl"; do
+            test -f "$file" || { echo "tag $TAG does not match the built package: no $file"; exit 1; }
+          done
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
