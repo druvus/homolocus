@@ -305,6 +305,7 @@ class GeneFamily:
     id: str                       # e.g. "F001"
     gene_ids: list[str]           # reference gene IDs
     representative_id: str        # earliest gene in the reference, for ordering
+    name: str | None              # from the reference annotation (7.6), never empty
 ```
 
 Built from a reference self-search (7.6). Every searchable reference gene belongs to exactly one family. A gene with no paralogs is a family of one. Genes without a protein belong to no family. `gene_ids` are in genomic order and the representative is the first of them.
@@ -573,6 +574,7 @@ Reference genes are grouped before the main search:
 - **[DECIDED]** DIAMOND reports A→B and B→A separately. A and B are linked when either direction passes.
 - **[PROPOSED]** Identity and coverage come from the aggregated self-search `GeneMatch` (5.7). Thresholds are inclusive. No e-value condition is added beyond DIAMOND's `hsp_evalue`.
 - **[PROPOSED]** Family IDs are `F001`, `F002`, … numbered in genomic order of their representatives (3 digits, more beyond 999).
+- **[PROPOSED]** A family's `name` comes from the reference annotation of its members: their `/gene` qualifiers, unique and in genomic order, joined with `/` (`tnpA/tnpB`); when no member has one, their `/product` qualifiers the same way; otherwise no name. Family IDs stay the keys in every model and file; the name is a label.
 - Configuration: `FamilyGrouping(family_min_identity=90, family_min_coverage=0.8)`. Setting `family_min_identity=None` disables grouping, so every gene is its own family.
 
 Effects:
@@ -736,6 +738,7 @@ Matplotlib only in v0.1.
 
 - **[DECIDED]** Family colours: families take the eight validated colour-blind-safe palette hues in reference order (blue `#2a78d6`, orange `#eb6834`, aqua `#1baf7a`, yellow `#eda100`, magenta `#e87ba4`, green `#008300`, violet `#6250d6`, red `#e34948`); family 9 reuses hue 1, and so on. Colour is never the only cue: every coloured gene carries its family ID as a label, and a legend maps family IDs to colours.
 - **[PROPOSED]** A matched target gene takes the colour of the family of its best-bit-score passing match (7.6); on equal bit scores, the family that comes first in reference order wins. Additional genes and reference genes without a protein are light grey (`#d9d8d2`) and unlabelled. Each overview line lists its missing families as text.
+- **[PROPOSED]** A named family is labelled `F001 sitA` on gene glyphs, in the legend and in the missing-families note; an unnamed one keeps its ID alone. In plots only, a name longer than 24 characters is cut to 23 characters and `…`.
 - **[PROPOSED]** Every line has its own 1-based x-axis over its interval: the reference region, or a candidate's display interval (10).
 
 ### 11.2 Individual candidate plot
@@ -827,7 +830,7 @@ results/
 - All coordinates in files are 1-based inclusive.
 - `analysis.json` holds run metadata only: parameters, tool versions, thresholds, warnings, skipped features (pseudogenes, compound CDS, untranslatable genes), `reference_genes_without_protein`, and the reference families. It is **not** a reloadable results object.
 - **[PROPOSED]** `summary.tsv` columns: `rank, candidate_id, contig, start, end, span_bp, score, content, similarity, order, orientation, spacing, reference_coverage, mean_protein_coverage, n_target_genes, n_matched_genes, n_missing_families, flags`.
-- **[PROPOSED]** Candidate TSV columns: `target_gene_id, locus_tag, product, start, end, strand, role (matched|additional), reference_gene_id, family_id, identity, query_coverage, subject_coverage, bit_score, is_best_copy, flags`.
+- **[PROPOSED]** Candidate TSV columns: `target_gene_id, locus_tag, product, start, end, strand, role (matched|additional), reference_gene_id, family_id, family_name, identity, query_coverage, subject_coverage, bit_score, is_best_copy, flags`.
 - **[PROPOSED]** Writing results is idempotent. Re-running into an existing output directory overwrites the files the package manages and leaves other files untouched. Identical input and parameters give identical output files: rows and candidates are ordered deterministically, and no output file carries a timestamp except the run metadata in `analysis.json`.
 - **[DECIDED]** `analysis.json` carries no timestamp either, so identical input and parameters give byte-identical output directories.
 - **[PROPOSED]** Output details:
@@ -1005,6 +1008,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 23. Matched-gene colour and its tie rule, grey shades, per-line axes, best-copy outline, plotting API and plot files, 11.
 24. CLI options generated from the configuration dataclasses, exit codes and the stdout summary, 13.
 25. Tested dependency floors without caps, the build and minimum-versions CI jobs, and the tag-triggered PyPI release, 15.
+26. Family names from `/gene`, else `/product`, joined with `/`; `F001 sitA` labels truncated at 24 characters in plots; `family_name` in candidate TSVs, 5.5, 7.6, 11, 14.
 
 **Still open:**
 
