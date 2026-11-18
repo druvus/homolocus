@@ -52,6 +52,14 @@ homolocus find --reference ecoli_pai.gbk --genome target.gbk --output results/
 results written to results/
 ```
 
+Search several target genomes in one run by giving `--genome` more than one file:
+
+```bash
+homolocus find --reference ecoli_pai.gbk --genome strain_a.fna strain_b.gbk --output results/
+```
+
+The reference families and its self-search are computed once. Each genome is then searched on its own, so its results are the same as a run with that genome alone. Genomes are named after their files (`strain_a`, `strain_b`), and names must be unique. Each candidate line starts with its genome, and a genome without candidates prints `strain_b: no candidates`.
+
 Run `homolocus find --help` to see every option and its default. The exit code is:
 
 - 0 on success, including when nothing is found;
@@ -77,6 +85,17 @@ genes = results.genes_dataframe()  # one row per gene and match, with candidate_
 results.plot().savefig("overview.png")  # reference and every candidate
 results.plot_candidate(1).savefig("candidate_001.png")  # one candidate in detail
 results.write("results")  # every output file listed below
+```
+
+For several genomes, use `find_all`. It returns the results of every genome, in order and by name:
+
+```python
+genomes = [Genome.from_file(path) for path in ("strain_a.fna", "strain_b.gbk")]
+found = finder.find_all(genomes)  # families and self-search computed once
+found["strain_a"].best_candidate
+found.to_dataframe()  # every candidate, with a leading genome column
+found.plot()  # the reference and every genome's candidates in one figure
+found.write("results")  # one folder per genome plus combined files
 ```
 
 To take a region from a whole genome, name the contig and the 1-based inclusive coordinates:
@@ -163,6 +182,7 @@ results/
     - `is_best_copy` marks the copy used for scoring.
     - Gene `flags` are `partial`, `split_fragment` and `fused`.
 - **Plots:** families keep one colour and their label across all plots: `F001 sitA` for a named family, `F001` otherwise, with names over 24 characters shortened. Unrelated and missing genes are grey, and the best copy of each family is outlined.
+- **Several genomes:** `results/<genome>/` holds the layout above for each genome. `results/summary.tsv` lists every candidate of every genome with a leading `genome` column. `results/plots/regions.png` shows the reference and every genome's candidates, titled by genome, and notes genomes without candidates. A single genome keeps the layout above.
 - **Deterministic:** the same input and settings give byte-identical files, with no timestamps. Writing again into a directory replaces the files homolocus manages, removes stale candidate files, and leaves other files alone.
 
 ## Options
