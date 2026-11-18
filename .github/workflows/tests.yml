@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # release.yml runs every check and publishes the distributions built here.
+  workflow_call:
 
 permissions:
   contents: read
@@ -99,3 +101,45 @@ jobs:
         env:
           HOMOLOCUS_REQUIRE_DIAMOND: "1"
         run: pytest --cov=homolocus --cov-report=term-missing
+
+  build:
+    name: Build and check distributions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install build twine
+          python -m build
+          twine check --strict dist/*
+      - name: Check wheel contents
+        run: |
+          python - <<'EOF'
+          import pathlib
+          import zipfile
+
+          (wheel,) = pathlib.Path("dist").glob("*.whl")
+          names = set(zipfile.ZipFile(wheel).namelist())
+          package = pathlib.Path("src")
+          sources = {p.relative_to(package).as_posix() for p in package.rglob("*.py")}
+          assert sources <= names, sorted(sources - names)
+          assert "homolocus/py.typed" in names
+          assert not [n for n in names if n.startswith("tests/")]
+          print(f"{wheel.name}: {len(names)} files")
+          EOF
+      - name: Install the wheel into a clean environment
+        run: |
+          python -m venv "$RUNNER_TEMP/clean"
+          "$RUNNER_TEMP/clean/bin/pip" install dist/*.whl
+          "$RUNNER_TEMP/clean/bin/homolocus" --help
+          "$RUNNER_TEMP/clean/bin/homolocus" find --help > /dev/null
+          "$RUNNER_TEMP/clean/bin/python" -c "import homolocus; print(homolocus.RegionFinder)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
