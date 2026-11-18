@@ -214,6 +214,7 @@ def test_reversed_copy_scores_like_the_forward_one() -> None:
     (a,) = detect(context(), genome(contig("t1", *forward_genes)), forward)
     (b,) = detect(context(), genome(contig("t1", *reversed_genes)), backward)
     assert a.score == pytest.approx(b.score)
+    assert (a.reversed, b.reversed) == (False, True)
 
 
 def test_min_matches_and_min_reference_coverage_must_both_hold() -> None:

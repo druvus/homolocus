@@ -7,7 +7,7 @@ from homolocus.config import DiamondSearch, RegionDetection, ScoringWeights
 from homolocus.detection.candidate_generation import EventWindow, padded_interval, windows
 from homolocus.detection.flags import fusion_events, split_events, touches_contig_edge
 from homolocus.detection.matching import matching_events
-from homolocus.detection.scoring import FamilyPairing, components
+from homolocus.detection.scoring import FamilyPairing, components, is_reversed
 from homolocus.intervals import union_length
 from homolocus.models.cluster import Cluster, FamilyEvidence
 from homolocus.models.contig import Contig
@@ -174,6 +174,7 @@ def evaluate_window(
         ),
         splits=split_events(contig, passing, detection),
         fusions=fusion_events(contig, passing, context.families, detection),
+        reversed=is_reversed(pairings),
     )
 
 
