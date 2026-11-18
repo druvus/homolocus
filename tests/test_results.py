@@ -102,6 +102,7 @@ def test_gene_rows_cover_every_gene_and_match() -> None:
         "role",
         "reference_gene_id",
         "family_id",
+        "family_name",
         "identity",
         "query_coverage",
         "subject_coverage",
@@ -119,6 +120,13 @@ def test_gene_rows_cover_every_gene_and_match() -> None:
     ]
     assert list(first["role"]) == ["matched", "matched", "matched", "additional", "matched"]
     assert list(first["family_id"].fillna("")) == ["F001", "F002", "F004", "", "F003"]
+    assert list(first["family_name"].fillna("")) == [
+        "sitA",
+        "",
+        "",
+        "",
+        "iron ABC transporter permease SitC",
+    ]
     assert list(first["is_best_copy"]) == [True, True, False, False, True]
 
 
@@ -247,6 +255,19 @@ def test_floats_have_six_significant_digits_and_missing_values_are_empty(tmp_pat
     summary = (tmp_path / "summary.tsv").read_text().splitlines()
     score = dict(zip(summary[0].split("\t"), summary[1].split("\t"), strict=True))["score"]
     assert len(score.replace(".", "").lstrip("0")) <= 6
+
+
+def test_candidate_tsv_has_family_names_and_blank_cells_without_one(tmp_path) -> None:
+    results().write(tmp_path)
+    lines = (tmp_path / "candidates" / "candidate_001.tsv").read_text().splitlines()
+    rows = [dict(zip(lines[0].split("\t"), line.split("\t"), strict=True)) for line in lines[1:]]
+    assert [row["family_name"] for row in rows] == [
+        "sitA",
+        "",
+        "",
+        "",
+        "iron ABC transporter permease SitC",
+    ]
 
 
 def test_writing_twice_gives_identical_bytes(tmp_path) -> None:

@@ -57,6 +57,7 @@ GENE_COLUMNS = (
     "role",
     "reference_gene_id",
     "family_id",
+    "family_name",
     "identity",
     "query_coverage",
     "subject_coverage",
@@ -154,6 +155,7 @@ class RegionResults:
 _EMPTY_MATCH: Row = {
     "reference_gene_id": None,
     "family_id": None,
+    "family_name": None,
     "identity": float("nan"),
     "query_coverage": float("nan"),
     "subject_coverage": float("nan"),
@@ -225,6 +227,7 @@ def _match_columns(match: GeneMatch, family: FamilyEvidence) -> Row:
     return {
         "reference_gene_id": match.reference_gene_id,
         "family_id": family.family_id,
+        "family_name": family.family_name,
         "identity": match.identity,
         "query_coverage": match.query_coverage,
         "subject_coverage": match.subject_coverage,

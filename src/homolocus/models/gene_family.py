@@ -6,10 +6,14 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class GeneFamily:
-    """Reference genes grouped as paralogs. Members are in genomic order."""
+    """Reference genes grouped as paralogs. Members are in genomic order.
+
+    ``name`` is a label from the members' annotation (spec 7.6); IDs stay the keys.
+    """
 
     id: str
     gene_ids: tuple[str, ...]
+    name: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -18,6 +22,8 @@ class GeneFamily:
             raise ValueError(f"family {self.id} needs at least one gene")
         if len(set(self.gene_ids)) != len(self.gene_ids):
             raise ValueError(f"family {self.id} has duplicate genes")
+        if self.name == "":
+            raise ValueError(f"family {self.id} name must not be empty; use None")
 
     @property
     def representative_id(self) -> str:

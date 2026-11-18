@@ -14,6 +14,8 @@ from homolocus.visualization.region_plot import (
 )
 from sample_world import results
 
+F003_LABEL = "F003 iron ABC transporter pe…"  # the sample F003 /product, cut at 24 characters
+
 
 def glyph(start: int, end: int, strand: int) -> GeneGlyph:
     return GeneGlyph("g", start, end, strand, "#2a78d6", "F001", "matched")
@@ -95,17 +97,26 @@ def test_overview_has_one_axis_per_track_with_arrows_titles_and_notes() -> None:
         assert all(track.start <= tick <= track.end for tick in axis.get_xticks())
     texts = [t.get_text() for t in figure.axes[1].texts]
     assert "missing: F004" in texts
-    assert "F001" in texts
+    assert "F001 sitA" in texts
 
 
 def test_overview_legend_lists_the_families() -> None:
     legend = overview_figure(results()).legends[0]
-    assert [t.get_text() for t in legend.get_texts()] == ["F001", "F002", "F003", "F004"]
+    assert [t.get_text() for t in legend.get_texts()] == [
+        "F001 sitA",
+        "F002",
+        F003_LABEL,
+        "F004",
+    ]
 
 
 def test_detail_legend_leaves_out_families_drawn_grey() -> None:
     legend = candidate_figure(results(), 1).legends[0]
-    assert [t.get_text() for t in legend.get_texts()] == ["F001", "F002", "F003"]
+    assert [t.get_text() for t in legend.get_texts()] == [
+        "F001 sitA",
+        "F002",
+        F003_LABEL,
+    ]
 
 
 def test_best_copies_have_a_thicker_outline() -> None:

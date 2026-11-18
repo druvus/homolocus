@@ -141,3 +141,46 @@ def test_self_search_groups_paralogs_but_not_shared_domains(tmp_path, proteins) 
         ("F002", (genes[2].id,)),
         ("F003", (genes[3].id,)),
     ]
+
+
+def named(number: int, gene_name: str | None = None, product: str | None = None) -> Gene:
+    start = number * 1000
+    return Gene(
+        "ref", start, start + 300, 1, "A" * 300, "M" * 100, gene_name=gene_name, product=product
+    )
+
+
+def names(families) -> list[str | None]:
+    return [family.name for family in families]
+
+
+def test_family_names_come_from_gene_then_product_qualifiers() -> None:
+    genes = [
+        named(0, "sitA", "iron transporter"),
+        named(1, None, "ABC transporter"),
+        named(2),
+    ]
+    families = group_families(genes, [], FamilyGrouping())
+    assert names(families) == ["sitA", "ABC transporter", None]
+
+
+def test_paralog_names_are_unique_and_joined_in_genomic_order() -> None:
+    genes = [named(0, "tnpA", "transposase"), named(1, "tnpB"), named(2, "tnpA")]
+    links = [hit(genes[0], genes[1]), hit(genes[1], genes[2])]
+    (family,) = group_families(genes, links, FamilyGrouping())
+    assert family.name == "tnpA/tnpB"
+
+
+def test_product_is_used_only_when_no_member_has_a_gene_name() -> None:
+    genes = [named(0, None, "transposase"), named(1, "insB", "IS1 protein")]
+    (family,) = group_families(genes, [hit(genes[0], genes[1])], FamilyGrouping())
+    assert family.name == "insB"
+    products = [named(0, None, "transposase"), named(1, None, "IS1 protein")]
+    (family,) = group_families(products, [hit(products[0], products[1])], FamilyGrouping())
+    assert family.name == "transposase/IS1 protein"
+
+
+def test_families_are_named_with_grouping_disabled() -> None:
+    genes = [named(0, "sitA"), named(1, "sitB")]
+    families = group_families(genes, [hit(genes[0], genes[1])], FamilyGrouping(None))
+    assert names(families) == ["sitA", "sitB"]

@@ -1,6 +1,7 @@
 """A small synthetic run shared by the results, output and visualization tests.
 
-Reference genes R1-R4 (one family each) and a target contig t1 with two
+Reference genes R1-R4 (one family each; F001 is named sitA from /gene,
+F003 from a long /product, F002 and F004 are unnamed) and a target contig t1 with two
 candidates: A, B, an inserted gene, C (families F001-F003, F004 missing)
 and a weaker copy FAR_A, FAR_B far away. B also has a weak match to R4.
 """
@@ -21,15 +22,18 @@ from homolocus import (
     ScoringWeights,
 )
 from homolocus.detection.evaluation import DetectionContext, detect
+from homolocus.detection.families import family_name
 from homolocus.search.protein_index import ProteinIndex
 
 PROTEIN = 300
+ANNOTATION = ({"gene_name": "sitA"}, {}, {"product": "iron ABC transporter permease SitC"}, {})
 REF_GENES = tuple(
-    Gene("ref", n * 1200, n * 1200 + 900, 1, "A" * 900, "M" * PROTEIN) for n in range(4)
+    Gene("ref", n * 1200, n * 1200 + 900, 1, "A" * 900, "M" * PROTEIN, **ANNOTATION[n])
+    for n in range(4)
 )
 REFERENCE = ReferenceRegion("ref", 0, 4500, "A" * 4500, REF_GENES)
 FAMILIES = ReferenceFamilies(
-    tuple(GeneFamily(f"F{n + 1:03d}", (g.id,)) for n, g in enumerate(REF_GENES))
+    tuple(GeneFamily(f"F{n + 1:03d}", (g.id,), family_name([g])) for n, g in enumerate(REF_GENES))
 )
 
 

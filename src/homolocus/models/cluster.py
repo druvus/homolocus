@@ -39,6 +39,7 @@ class FamilyEvidence:
 
     ``copies`` are the evidence genes with a passing match to any member;
     ``best_member_id`` and ``best_copy_id`` form the pairing used for scoring.
+    ``family_name`` is the family's label from the reference annotation.
     """
 
     family_id: str
@@ -47,6 +48,7 @@ class FamilyEvidence:
     best_member_id: str | None
     best_copy_id: str | None
     copies: tuple[str, ...]
+    family_name: str | None = None
 
     def __post_init__(self) -> None:
         if not self.family_id:

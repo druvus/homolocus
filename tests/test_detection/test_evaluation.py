@@ -120,6 +120,13 @@ def test_family_without_matches_is_missing() -> None:
     assert not result.represented
 
 
+def test_evidence_carries_the_family_name_whether_present_or_missing() -> None:
+    assert evidence_for(GeneFamily("F002", (R2,), name="sitB")).family_name == "sitB"
+    present = evidence_for(GeneFamily("F001", (R1,), name="sitA"), hit(R1, T1, (0, 100)))
+    assert (present.represented, present.family_name) == (True, "sitA")
+    assert evidence_for(GeneFamily("F001", (R1,))).family_name is None
+
+
 def test_matches_may_be_given_as_a_one_shot_iterator() -> None:
     family = GeneFamily("F001", (R1, R2))
     matches = iter([hit(R1, T1, (0, 30)), hit(R2, T2, (0, 90))])
