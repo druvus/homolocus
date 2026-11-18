@@ -85,7 +85,10 @@ def read_genbank(path: str | Path) -> Genome:
 
 
 def genbank_genome(records: list[SeqRecord], source: str) -> Genome:
-    """Build a Genome from GenBank records using their supplied CDS annotation."""
+    """Build a Genome from GenBank records using their supplied CDS annotation.
+
+    The genome is named after the file it came from, without the extension.
+    """
     check_unique_ids(records, source)
     contigs: dict[str, Contig] = {}
     skipped: list[SkippedFeature] = []
@@ -93,7 +96,9 @@ def genbank_genome(records: list[SeqRecord], source: str) -> Genome:
         parsed = parse_record(record)
         contigs[record_id(record)] = record_contig(record, parsed.genes)
         skipped.extend(parsed.skipped)
-    return Genome(contigs=contigs, source=source, skipped_features=tuple(skipped))
+    return Genome(
+        contigs=contigs, name=Path(source).stem, source=source, skipped_features=tuple(skipped)
+    )
 
 
 def check_unique_ids(records: list[SeqRecord], source: str) -> None:

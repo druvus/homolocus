@@ -121,3 +121,12 @@ def test_unknown_annotation_mode_is_rejected(tmp_path, annotation) -> None:
     path = write_text(tmp_path, ">c1\nACGT\n")
     with pytest.raises(ValueError, match="annotation"):
         read_genome(path, annotation=annotation)
+
+
+def test_genome_is_named_after_its_file(tmp_path, write_genbank, make_record, dna) -> None:
+    fasta = write_text(tmp_path, f">c1\n{contig_sequence(dna)}\n", "strain_A.fna")
+    assert read_genome(fasta).name == "strain_A"
+    cds = SeqFeature(FeatureLocation(500, 1403, strand=1), type="CDS")
+    gbk = write_genbank([make_record("c1", contig_sequence(dna), [cds])])
+    assert read_genome(gbk).name == read_genbank(gbk).name == "input"
+    assert Genome.from_file(gbk, annotation="pyrodigal").name == "input"
