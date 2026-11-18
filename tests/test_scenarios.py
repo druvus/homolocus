@@ -36,6 +36,18 @@ def test_reversed_copy_scores_like_the_forward_one_on_real_coordinates() -> None
     assert reverse_hit.components == forward_hit.components
     assert (reverse_hit.start, reverse_hit.end) == (reverse.genes[0].start, reverse.genes[-1].end)
     assert all(gene.strand == -1 for gene in reverse_hit.evidence_genes)
+    assert (forward_hit.reversed, reverse_hit.reversed) == (False, True)
+
+
+def test_reversed_copy_is_called_reversed_and_drawn_in_reference_direction() -> None:
+    world = World(4)
+    copies = [world.copy(i) for i in range(4)]
+    reverse = world.contig("t1", [Slot(p, strand=-1) for p in reversed(copies)])
+    found = run(world.reference(), genome(reverse))
+    assert list(found.to_dataframe()["direction"]) == ["reversed"]
+    _, line = found.plot().axes
+    assert line.get_xlim()[0] > line.get_xlim()[1]
+    assert line.get_title(loc="left").endswith(" · reversed")
 
 
 def test_unrelated_genome_gives_no_candidates_but_still_writes_output(tmp_path) -> None:

@@ -143,7 +143,7 @@ Each candidate (`results.candidates`, ranked best first) keeps its evidence:
     - **orientation:** agreement of neighbouring strands;
     - **spacing:** candidate span versus reference span.
 
-    Reversal doesn't change order or orientation.
+    Reversal doesn't change order or orientation. A candidate is called *reversed* when its families mostly run backwards compared with the reference (by gene order, then by strand on a tie).
 
 6. **Flags.** Candidates are flagged `split` (one reference protein found as several fragments), `fusion` (one target protein matching several families), `partial` (a partial gene) or `edge` (close to a contig end, so possibly truncated). Flags never change the score.
 
@@ -172,6 +172,7 @@ results/
 - **`summary.tsv`:**
     - rank and candidate ID, the contig, and `start`/`end` (the matched span);
     - `display_start`/`display_end` (with padding) and `span_bp`;
+    - `direction`: `forward`, or `reversed` when the candidate runs opposite to the reference;
     - the score and its five components;
     - `reference_coverage` and `mean_protein_coverage`;
     - gene, match and missing-family counts;
@@ -181,7 +182,7 @@ results/
     - `family_name` is the family's name from the reference annotation, empty when it has none.
     - `is_best_copy` marks the copy used for scoring.
     - Gene `flags` are `partial`, `split_fragment` and `fused`.
-- **Plots:** families keep one colour and their label across all plots: `F001 sitA` for a named family, `F001` otherwise, with names over 24 characters shortened. Unrelated and missing genes are grey, and the best copy of each family is outlined.
+- **Plots:** every candidate reads in the reference direction. A reversed candidate keeps its real coordinates on a descending axis, with `reversed` in its title and axis label. Families keep one colour and their label across all plots: `F001 sitA` for a named family, `F001` otherwise, with names over 24 characters shortened. Unrelated and missing genes are grey, and the best copy of each family is outlined.
 - **Several genomes:** `results/<genome>/` holds the layout above for each genome. `results/summary.tsv` lists every candidate of every genome with a leading `genome` column. `results/plots/regions.png` shows the reference and every genome's candidates, titled by genome, and notes genomes without candidates. A single genome keeps the layout above.
 - **Deterministic:** the same input and settings give byte-identical files, with no timestamps. Writing again into a directory replaces the files homolocus manages, removes stale candidate files, and leaves other files alone.
 
