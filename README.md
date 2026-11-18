@@ -113,7 +113,7 @@ Each candidate (`results.candidates`, ranked best first) keeps its evidence:
 
 ## How it works
 
-1. **Families.** Reference proteins are searched against each other, and close paralogs are grouped into families `F001`, `F002`, … (at least 90 % identity and 0.8 coverage by default). A family counts once in coverage and scoring.
+1. **Families.** Reference proteins are searched against each other, and close paralogs are grouped into families `F001`, `F002`, … (at least 90 % identity and 0.8 coverage by default). A family counts once in coverage and scoring. A family is named from its genes' `/gene` qualifiers in the reference GenBank, or their `/product` when none has a `/gene` (paralogs with different names are joined: `tnpA/tnpB`).
 2. **Search.** Reference proteins are searched against target proteins with DIAMOND. Every hit and every HSP is kept, then aggregated per gene pair (union-based coverage, never double counted).
 3. **Matching events.** A target gene is an event when it has a match that passes the E-value and identity thresholds and covers at least half of either protein. That admits both split fragments and fused proteins.
 4. **Candidates.** On each contig, nearby events are chained (limited by intervening genes and the base-pair gap). Chains longer than `--max-region-bp` are split into windows. A candidate needs at least `--min-matches` represented families and `--min-reference-coverage`.
@@ -159,9 +159,10 @@ results/
     - `flags`.
 - **Candidate TSVs:** one row per gene and match (one empty-match row for a gene without matches).
     - The `role` is `matched` or `additional`.
+    - `family_name` is the family's name from the reference annotation, empty when it has none.
     - `is_best_copy` marks the copy used for scoring.
     - Gene `flags` are `partial`, `split_fragment` and `fused`.
-- **Plots:** families keep one colour and their family ID label across all plots. Unrelated and missing genes are grey, and the best copy of each family is outlined.
+- **Plots:** families keep one colour and their label across all plots: `F001 sitA` for a named family, `F001` otherwise, with names over 24 characters shortened. Unrelated and missing genes are grey, and the best copy of each family is outlined.
 - **Deterministic:** the same input and settings give byte-identical files, with no timestamps. Writing again into a directory replaces the files homolocus manages, removes stale candidate files, and leaves other files alone.
 
 ## Options

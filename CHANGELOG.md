@@ -2,6 +2,12 @@
 
 All notable changes to homolocus are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Families are named from the reference GenBank annotation: their genes' `/gene` qualifiers, else `/product`. Names appear in plot labels and legends (`F001 sitA`), in the missing-families note, in a new `family_name` column of the candidate TSVs, and on `GeneFamily.name` and `FamilyEvidence.family_name`.
+
 ## [0.1.0] - Unreleased
 
 The first release. Thresholds and score weights are unvalidated starting values; see section 18 of the specification.

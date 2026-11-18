@@ -6,6 +6,7 @@ checks what a user would see in the results.
 """
 
 import csv
+from dataclasses import replace
 
 import pytest
 
@@ -192,3 +193,18 @@ def test_halves_on_two_contigs_are_never_combined() -> None:
     for candidate in halves.candidates:
         assert {gene.contig_id for gene in candidate.genes} == {candidate.contig_id}
     assert [c.reference_coverage for c in halves.candidates] == [0.5, 0.5]
+
+
+def test_reference_annotation_names_families_end_to_end(tmp_path) -> None:
+    world = World(3)
+    plain = world.reference()
+    annotation = [{"gene_name": "sitA"}, {"product": "iron transporter"}, {}]
+    genes = tuple(replace(g, **a) for g, a in zip(plain.genes, annotation, strict=True))
+    reference = replace(plain, genes=genes)
+    target = world.contig("t1", [Slot(world.copy(i)) for i in range(3)])
+    found = run(reference, genome(target))
+    assert [f.name for f in found.families] == ["sitA", "iron transporter", None]
+    found.write(tmp_path)
+    with (tmp_path / "candidates" / "candidate_001.tsv").open() as handle:
+        rows = list(csv.DictReader(handle, delimiter="\t"))
+    assert [row["family_name"] for row in rows] == ["sitA", "iron transporter", ""]
