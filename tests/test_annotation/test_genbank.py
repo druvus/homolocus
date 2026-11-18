@@ -11,6 +11,7 @@ from Bio.SeqFeature import (
     FeatureLocation,
     SeqFeature,
 )
+from Bio.SeqRecord import SeqRecord
 
 from homolocus import Genome, SkippedFeature, SkipReason
 from homolocus.annotation.genbank import (
@@ -266,8 +267,7 @@ def test_region_filters_skipped_features_too(make_record) -> None:
     assert parsed.skipped == []
 
 
-def test_record_without_sequence_is_rejected(make_record) -> None:
-    record = make_record("c1", SEQUENCE, [])
-    record.seq = None
+def test_record_without_sequence_is_rejected() -> None:
+    record = SeqRecord(None, id="c1", name="c1", description="no sequence")
     with pytest.raises(ValueError, match="no sequence"):
         record_contig(record, [])

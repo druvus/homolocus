@@ -22,11 +22,12 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
+# Tested floors, no caps (spec 15). CI's minimum-versions job installs exactly these.
 dependencies = [
-    "biopython",
-    "pandas",
-    "matplotlib",
-    "pyrodigal",
+    "biopython>=1.80",
+    "pandas>=2.0",
+    "matplotlib>=3.8",
+    "pyrodigal>=3.0",
 ]
 
 # [project.urls]
