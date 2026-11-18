@@ -11,10 +11,13 @@ from homolocus.visualization.layout import (
     candidate_track,
     detail_tracks,
     family_colours,
+    family_label,
     overview_tracks,
     reference_track,
 )
 from sample_world import FAMILIES, INSERT, REF_GENES, REFERENCE, A, B, C, results
+
+F003_LABEL = "F003 iron ABC transporter pe…"  # the sample F003 /product, cut at 24 characters
 
 BLUE, ORANGE, AQUA, YELLOW = PALETTE[:4]
 
@@ -51,7 +54,13 @@ def test_reference_track_shows_every_gene_one_based_and_coloured_by_family() -> 
         (3601, 4500, 1),
     ]
     assert [g.colour for g in track.glyphs] == [BLUE, ORANGE, AQUA, YELLOW]
-    assert [g.label for g in track.glyphs] == ["F001", "F002", "F003", "F004"]
+    assert [g.label for g in track.glyphs] == [
+        "F001 sitA",
+        "F002",
+        F003_LABEL,
+        "F004",
+    ]
+    assert [g.family_id for g in track.glyphs] == ["F001", "F002", "F003", "F004"]
     assert {g.role for g in track.glyphs} == {"reference"}
 
 
@@ -81,9 +90,13 @@ def test_candidate_track_colours_matched_genes_by_their_best_family() -> None:
     track = candidate_track(results(), 1)
     assert (track.contig_id, track.start, track.end) == ("t1", 10_001, 14_500)
     by_id = {g.gene_id: g for g in track.glyphs}
-    assert (by_id[A.id].colour, by_id[A.id].label, by_id[A.id].role) == (BLUE, "F001", "matched")
+    assert (by_id[A.id].colour, by_id[A.id].label, by_id[A.id].role) == (
+        BLUE,
+        "F001 sitA",
+        "matched",
+    )
     assert (by_id[B.id].colour, by_id[B.id].label) == (ORANGE, "F002")
-    assert (by_id[C.id].colour, by_id[C.id].label) == (AQUA, "F003")
+    assert (by_id[C.id].colour, by_id[C.id].label) == (AQUA, F003_LABEL)
 
 
 def test_additional_genes_are_grey_unlabelled_and_keep_their_strand() -> None:
@@ -113,7 +126,7 @@ def test_candidate_title_and_note_carry_score_coverage_flags_and_missing_familie
 def test_candidate_without_missing_families_has_no_note() -> None:
     found = results()
     second = candidate_track(found, 2)
-    assert second.note == "missing: F003, F004"
+    assert second.note == "missing: F003 iron ABC transporter pe…, F004"
     complete = replace(found.candidates[0], families=found.candidates[0].represented_families)
     assert candidate_track(replace(found, candidates=(complete,)), 1).note == ""
 
@@ -147,7 +160,7 @@ def test_failing_matches_never_decide_a_colour() -> None:
     found = results(matches=(*MATCHES, strong_failing))
     glyph = {g.gene_id: g for g in candidate_track(found, 1).glyphs}[A.id]
     assert isinstance(strong_failing, GeneMatch)
-    assert (glyph.colour, glyph.label) == (BLUE, "F001")
+    assert (glyph.colour, glyph.family_id) == (BLUE, "F001")
 
 
 def test_tied_bit_scores_pick_the_earlier_family() -> None:
@@ -157,4 +170,11 @@ def test_tied_bit_scores_pick_the_earlier_family() -> None:
     glyph = {g.gene_id: g for g in candidate_track(results(matches=(tie, *MATCHES)), 1).glyphs}[
         A.id
     ]
-    assert glyph.label == "F001"
+    assert glyph.family_id == "F001"
+
+
+def test_family_labels_add_the_name_and_cut_long_ones() -> None:
+    assert family_label("F001", None) == "F001"
+    assert family_label("F001", "sitA") == "F001 sitA"
+    assert family_label("F002", "x" * 24) == "F002 " + "x" * 24
+    assert family_label("F002", "x" * 25) == "F002 " + "x" * 23 + "…"

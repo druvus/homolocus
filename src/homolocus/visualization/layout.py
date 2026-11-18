@@ -33,12 +33,15 @@ NEUTRAL_GREY = "#d9d8d2"
 MISSING_GREY = "#9a998f"
 """Reference genes of families missing from a candidate (detail plot)."""
 
+LABEL_NAME_LENGTH = 24
+"""Longest family name shown in a plot label; longer names end in an ellipsis."""
+
 GlyphRole = Literal["reference", "missing", "unsearchable", "matched", "additional"]
 
 
 @dataclass(frozen=True)
 class GeneGlyph:
-    """One gene arrow: 1-based span, strand, colour and an optional label."""
+    """One gene arrow: 1-based span, strand, colour, an optional label and its family."""
 
     gene_id: str
     start: int
@@ -48,6 +51,7 @@ class GeneGlyph:
     label: str | None
     role: GlyphRole
     outlined: bool = False
+    family_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -67,20 +71,35 @@ def family_colours(families: ReferenceFamilies) -> dict[str, str]:
     return {family.id: PALETTE[n % len(PALETTE)] for n, family in enumerate(families)}
 
 
+def family_label(family_id: str, name: str | None) -> str:
+    """Plot label of a family: ``F001 sitA``, or the ID alone when unnamed (spec 11)."""
+    if name is None:
+        return family_id
+    if len(name) > LABEL_NAME_LENGTH:
+        name = name[: LABEL_NAME_LENGTH - 1] + "…"
+    return f"{family_id} {name}"
+
+
+def family_labels(families: ReferenceFamilies) -> dict[str, str]:
+    """Family ID to plot label, in family order."""
+    return {family.id: family_label(family.id, family.name) for family in families}
+
+
 def reference_track(results: RegionResults, *, missing: Collection[str] = ()) -> Track:
     """The reference region, coloured by family; ``missing`` families in mid grey."""
     reference = results.reference
-    colours = family_colours(results.families)
+    colours, labels = family_colours(results.families), family_labels(results.families)
     glyphs = []
     for gene in reference.genes:
         if gene.protein_sequence is None:
-            glyphs.append(_glyph(gene, NEUTRAL_GREY, None, "unsearchable"))
+            glyphs.append(_glyph(gene, NEUTRAL_GREY, "unsearchable"))
             continue
         family_id = results.families.family_of(gene.id).id
         if family_id in missing:
-            glyphs.append(_glyph(gene, MISSING_GREY, family_id, "missing"))
+            glyphs.append(_glyph(gene, MISSING_GREY, "missing", (family_id, labels[family_id])))
         else:
-            glyphs.append(_glyph(gene, colours[family_id], family_id, "reference"))
+            family = (family_id, labels[family_id])
+            glyphs.append(_glyph(gene, colours[family_id], "reference", family))
     start, end = to_one_based(reference.start, reference.end)
     title = f"reference · {reference.contig_id}:{start}-{end}"
     return Track(title, reference.contig_id, start, end, tuple(glyphs))
@@ -90,16 +109,17 @@ def candidate_track(results: RegionResults, rank: int, *, detail: bool = False) 
     """A candidate's display interval; matched genes coloured by their best family."""
     cluster = results.candidates[rank - 1]
     best_family = _best_families(results, cluster)
-    colours = family_colours(results.families)
+    colours, labels = family_colours(results.families), family_labels(results.families)
     best_copies = {family.best_copy_id for family in cluster.represented_families}
     glyphs = []
     for gene in cluster.genes:
         if gene.id in cluster.event_ids:
             family_id = best_family[gene.id]
             outlined = detail and gene.id in best_copies
-            glyphs.append(_glyph(gene, colours[family_id], family_id, "matched", outlined))
+            family = (family_id, labels[family_id])
+            glyphs.append(_glyph(gene, colours[family_id], "matched", family, outlined))
         else:
-            glyphs.append(_glyph(gene, NEUTRAL_GREY, None, "additional"))
+            glyphs.append(_glyph(gene, NEUTRAL_GREY, "additional"))
     start, end = to_one_based(cluster.display_start, cluster.display_end)
     return Track(
         title=_candidate_title(results, rank, cluster),
@@ -140,10 +160,16 @@ def detail_tracks(results: RegionResults, rank: int) -> tuple[Track, Track]:
 
 
 def _glyph(
-    gene: Gene, colour: str, label: str | None, role: GlyphRole, outlined: bool = False
+    gene: Gene,
+    colour: str,
+    role: GlyphRole,
+    family: tuple[str, str] | None = None,
+    outlined: bool = False,
 ) -> GeneGlyph:
+    """A glyph; ``family`` is the (ID, label) pair of a coloured gene."""
+    family_id, label = family if family else (None, None)
     start, end = to_one_based(gene.start, gene.end)
-    return GeneGlyph(gene.id, start, end, gene.strand, colour, label, role, outlined)
+    return GeneGlyph(gene.id, start, end, gene.strand, colour, label, role, outlined, family_id)
 
 
 def _best_families(results: RegionResults, cluster: Cluster) -> Mapping[str, str]:
@@ -175,5 +201,5 @@ def _candidate_title(results: RegionResults, rank: int, cluster: Cluster) -> str
 
 
 def _missing_note(cluster: Cluster) -> str:
-    missing = [family.family_id for family in cluster.missing_families]
+    missing = [family_label(f.family_id, f.family_name) for f in cluster.missing_families]
     return f"missing: {', '.join(missing)}" if missing else ""

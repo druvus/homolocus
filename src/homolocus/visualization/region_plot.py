@@ -16,6 +16,7 @@ from homolocus.visualization.layout import (
     Track,
     detail_tracks,
     family_colours,
+    family_labels,
     overview_tracks,
 )
 
@@ -148,10 +149,10 @@ def _recessive_axes(axis: Axes, label: str) -> None:
 
 
 def _family_legend(figure: Figure, results: RegionResults, tracks: Sequence[Track]) -> None:
-    shown = {glyph.label for track in tracks for glyph in track.glyphs if glyph.role != "missing"}
-    colours = family_colours(results.families)
+    shown = {g.family_id for track in tracks for g in track.glyphs if g.role != "missing"}
+    colours, labels = family_colours(results.families), family_labels(results.families)
     handles = [
-        Patch(facecolor=colour, edgecolor=SURFACE, label=family_id)
+        Patch(facecolor=colour, edgecolor=SURFACE, label=labels[family_id])
         for family_id, colour in colours.items()
         if family_id in shown
     ]
