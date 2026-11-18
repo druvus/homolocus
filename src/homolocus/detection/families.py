@@ -1,6 +1,6 @@
 """Group paralogous reference genes into families (spec 7.6)."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 from homolocus.config import FamilyGrouping
 from homolocus.models.alignment import Alignment
@@ -32,11 +32,25 @@ def group_families(
     components: dict[str, list[str]] = {}
     for gene in genes:
         components.setdefault(_find(parent, gene.id), []).append(gene.id)
+    by_id = {gene.id: gene for gene in genes}
     families = (
-        GeneFamily(f"F{number:03d}", tuple(members))
+        GeneFamily(f"F{number:03d}", tuple(members), family_name([by_id[m] for m in members]))
         for number, members in enumerate(components.values(), start=1)
     )
     return ReferenceFamilies(tuple(families))
+
+
+def family_name(members: Sequence[Gene]) -> str | None:
+    """Name of a family from its members' annotation (spec 7.6).
+
+    The ``/gene`` names, unique and in member order, joined with ``/``; when no
+    member has one, the ``/product`` descriptions the same way; else None.
+    """
+    for values in ([m.gene_name for m in members], [m.product for m in members]):
+        unique = list(dict.fromkeys(value for value in values if value))
+        if unique:
+            return "/".join(unique)
+    return None
 
 
 def _links(match: GeneMatch, identity: float, coverage: float, parent: dict[str, str]) -> bool:

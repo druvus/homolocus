@@ -55,3 +55,10 @@ def test_gene_in_two_families_is_rejected() -> None:
 def test_duplicate_family_ids_are_rejected() -> None:
     with pytest.raises(ValueError, match="duplicate family ID"):
         ReferenceFamilies((GeneFamily("F001", (A,)), GeneFamily("F001", (B,))))
+
+
+def test_a_family_may_carry_a_name_but_never_an_empty_one() -> None:
+    assert GeneFamily("F001", (A,)).name is None
+    assert GeneFamily("F001", (A,), name="sitA").name == "sitA"
+    with pytest.raises(ValueError, match="name must not be empty"):
+        GeneFamily("F001", (A,), name="")
