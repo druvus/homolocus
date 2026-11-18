@@ -11,6 +11,7 @@ All notable changes to homolocus are recorded here. The format follows [Keep a C
   - `--genome` takes one or more files, and `RegionFinder.find_all()` returns `GenomeSetResults`;
   - families and the self-search are computed once, and each genome's results equal a run on it alone;
   - output has a folder per genome, a combined `summary.tsv` with a `genome` column, and a combined overview plot.
+- Candidates are called `forward` or `reversed` relative to the reference (gene order, then strand). The call is in `Cluster.reversed` and a new `direction` column of `summary.tsv`. Plots draw every candidate in the reference direction: a reversed one sits on a descending axis, marked `reversed`.
 
 ### Changed
 

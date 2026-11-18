@@ -394,6 +394,7 @@ Retain:
 - Reference-gene-level coverage per family (8.1).
 - Flags: potential split, potential fusion, contains partial genes, touches contig edge. The split and fusion events behind the first two flags are kept as `splits` and `fusions` (9.4).
 - Number of duplicated homologue copies per family.
+- **[PROPOSED]** `reversed`: whether the candidate runs opposite to the reference (direction, section 8).
 
 The cluster is a result of detection, not a place to run DIAMOND.
 
@@ -657,6 +658,8 @@ How missing genes, insertions, duplications, splits and fusions affect the score
 - Duplicate copies are not penalized.
 - Split and fusion events do not alter the score in v0.1. They are reported as flags. A split reference gene still counts as represented through combined coverage (7.7).
 
+**[PROPOSED] Direction.** A candidate is *reversed* relative to the reference when, taking the represented families' best copies in target order, the longest decreasing run of reference positions is longer than the longest increasing run (the runs of the order component). On a tie, it is reversed when more best copies lie on the opposite strand to their best member than on the same strand. Otherwise it is *forward*. Direction never changes the score; order and orientation stay reversal-invariant.
+
 ### 8.1 Coverage metrics
 
 Kept separate:
@@ -738,7 +741,7 @@ Matplotlib only in v0.1.
 - Candidate score, reference coverage and flags (split, fusion, edge) are shown.
 - Contig IDs and 1-based genomic coordinates are shown.
 - Gene labels where practical.
-- Actual genomic orientation is shown. Target regions are not silently reoriented.
+- **[PROPOSED]** Every candidate line is drawn in the reference direction, and never silently: a reversed candidate (section 8) keeps its real 1-based coordinates on a descending x-axis, its title ends with `· reversed`, and its axis reads `<contig> position (1-based, reversed)`. The reference line is never flipped. This holds for the overview, the combined overview and the candidate plot.
 
 - **[DECIDED]** Family colours: families take the eight validated colour-blind-safe palette hues in reference order (blue `#2a78d6`, orange `#eb6834`, aqua `#1baf7a`, yellow `#eda100`, magenta `#e87ba4`, green `#008300`, violet `#6250d6`, red `#e34948`); family 9 reuses hue 1, and so on. Colour is never the only cue: every coloured gene carries its family ID as a label, and a legend maps family IDs to colours.
 - **[PROPOSED]** A matched target gene takes the colour of the family of its best-bit-score passing match (7.6); on equal bit scores, the family that comes first in reference order wins. Additional genes and reference genes without a protein are light grey (`#d9d8d2`) and unlabelled. Each overview line lists its missing families as text.
@@ -836,7 +839,7 @@ results/
 
 - All coordinates in files are 1-based inclusive.
 - `analysis.json` holds run metadata only: parameters, tool versions, thresholds, warnings, skipped features (pseudogenes, compound CDS, untranslatable genes), `reference_genes_without_protein`, and the reference families. It is **not** a reloadable results object.
-- **[PROPOSED]** `summary.tsv` columns: `rank, candidate_id, contig, start, end, span_bp, score, content, similarity, order, orientation, spacing, reference_coverage, mean_protein_coverage, n_target_genes, n_matched_genes, n_missing_families, flags`.
+- **[PROPOSED]** `summary.tsv` columns: `rank, candidate_id, contig, start, end, span_bp, direction (forward|reversed), score, content, similarity, order, orientation, spacing, reference_coverage, mean_protein_coverage, n_target_genes, n_matched_genes, n_missing_families, flags`.
 - **[PROPOSED]** Candidate TSV columns: `target_gene_id, locus_tag, product, start, end, strand, role (matched|additional), reference_gene_id, family_id, family_name, identity, query_coverage, subject_coverage, bit_score, is_best_copy, flags`.
 - **[PROPOSED]** Writing results is idempotent. Re-running into an existing output directory overwrites the files the package manages and leaves other files untouched. Identical input and parameters give identical output files: rows and candidates are ordered deterministically, and no output file carries a timestamp except the run metadata in `analysis.json`.
 - **[DECIDED]** `analysis.json` carries no timestamp either, so identical input and parameters give byte-identical output directories.
@@ -1018,6 +1021,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 25. Tested dependency floors without caps, the build and minimum-versions CI jobs, and the tag-triggered PyPI release, 15.
 26. Family names from `/gene`, else `/product`, joined with `/`; `F001 sitA` labels truncated at 24 characters in plots; `family_name` in candidate TSVs, 5.5, 7.6, 11, 14.
 27. Several target genomes per run: shared families, per-genome searches, genome names from file names, `find_all` and `GenomeSetResults`, repeatable `--genome`, per-genome subdirectories with a combined summary and overview plot, 2.2, 5.3, 11, 12, 13, 14.
+28. Candidate direction (order runs, then strands), `Cluster.reversed`, the `direction` summary column, and reversed candidates drawn on a descending axis, 5.8, 8, 11, 14.
 
 **Still open:**
 

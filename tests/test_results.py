@@ -39,6 +39,7 @@ def test_summary_has_one_row_per_candidate_with_one_based_coordinates() -> None:
         "display_start",
         "display_end",
         "span_bp",
+        "direction",
         "score",
         "content",
         "similarity",
@@ -66,6 +67,18 @@ def test_summary_has_one_row_per_candidate_with_one_based_coordinates() -> None:
     assert first["score"] == pytest.approx(best.score)
     assert first["order"] == best.components.order
     assert first["flags"] == ""
+    assert first["direction"] == "forward"
+
+
+def test_summary_says_which_candidates_run_opposite_to_the_reference(tmp_path) -> None:
+    found = results()
+    flipped = replace(found.candidates[1], reversed=True)
+    mixed = replace(found, candidates=(found.candidates[0], flipped))
+    assert list(mixed.to_dataframe()["direction"]) == ["forward", "reversed"]
+    mixed.write(tmp_path)
+    lines = (tmp_path / "summary.tsv").read_text().splitlines()
+    column = lines[0].split("\t").index("direction")
+    assert [line.split("\t")[column] for line in lines[1:]] == ["forward", "reversed"]
 
 
 def test_summary_flags_are_joined_in_a_fixed_order() -> None:

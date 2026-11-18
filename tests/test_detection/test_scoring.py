@@ -5,7 +5,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from homolocus import Gene, ScoreComponents
-from homolocus.detection.scoring import FamilyPairing, components
+from homolocus.detection.scoring import FamilyPairing, components, is_reversed
 
 
 def gene(contig: str, start: int, strand: int = 1, length: int = 900) -> Gene:
@@ -164,3 +164,41 @@ def test_reference_span_is_measured_from_the_first_member() -> None:
     offset = [pairing(10_000 + n * 1000, 50_000 + n * 1000) for n in range(3)]
     assert score(offset, span=2_900).spacing == 1.0
     assert score(offset, span=5_800).spacing == pytest.approx(0.5)
+
+
+def test_a_colinear_copy_is_forward() -> None:
+    assert not is_reversed(COLINEAR)
+
+
+def test_a_fully_reversed_copy_is_reversed_in_any_input_order() -> None:
+    flipped = [pairing(n * 1000, 60_000 - n * 1000, target_strand=-1) for n in range(4)]
+    assert is_reversed(flipped)
+    assert is_reversed(list(reversed(flipped)))
+
+
+def test_a_mostly_decreasing_copy_is_reversed_whatever_its_strands() -> None:
+    order = [3, 2, 0, 1]
+    assert is_reversed([pairing(n * 1000, 50_000 + order[n] * 1000) for n in range(4)])
+
+
+def test_an_order_tie_is_decided_by_strands() -> None:
+    tied = [1, 0, 3, 2]  # longest increasing run 2 (1, 3), longest decreasing run 2 (1, 0)
+
+    def copy(strands: list[int]) -> list[FamilyPairing]:
+        return [
+            pairing(n * 1000, 50_000 + tied[n] * 1000, target_strand=strands[n]) for n in range(4)
+        ]
+
+    assert not is_reversed(copy([1, 1, 1, 1]))
+    assert is_reversed(copy([-1, -1, -1, 1]))
+    assert not is_reversed(copy([-1, -1, 1, 1]))
+
+
+def test_relative_strand_counts_against_the_reference_strand() -> None:
+    both_minus = [pairing(0, 50_000, ref_strand=-1, target_strand=-1)]
+    assert not is_reversed(both_minus)
+    assert is_reversed([pairing(0, 50_000, ref_strand=-1, target_strand=1)])
+
+
+def test_no_pairings_is_forward() -> None:
+    assert not is_reversed([])

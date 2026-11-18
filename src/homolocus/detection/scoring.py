@@ -49,11 +49,30 @@ def _similarity(pairings: Sequence[FamilyPairing]) -> float:
     return sum(values) / len(values)
 
 
+def is_reversed(pairings: Sequence[FamilyPairing]) -> bool:
+    """Whether a candidate runs opposite to the reference (spec 8, direction).
+
+    Reversed when the longest decreasing run of best copies, in reference
+    order, beats the longest increasing run; on a tie, when more best copies
+    than not lie on the opposite strand to their best member.
+    """
+    ordered = sorted(pairings, key=lambda pairing: genomic_order(pairing.member))
+    increasing, decreasing = _runs(ordered)
+    opposite = sum(pairing.member.strand != pairing.copy.strand for pairing in ordered)
+    balance = (decreasing - increasing) or (opposite - (len(ordered) - opposite))
+    return balance > 0
+
+
 def _order(pairings: Sequence[FamilyPairing]) -> float:
+    return max(_runs(pairings)) / len(pairings)
+
+
+def _runs(pairings: Sequence[FamilyPairing]) -> tuple[int, int]:
+    """Longest increasing and decreasing runs of best copies, in member order."""
     positions = [genomic_order(pairing.copy) for pairing in pairings]
     increasing = _longest_non_decreasing(positions)
     decreasing = _longest_non_decreasing([tuple(-v for v in key) for key in positions])
-    return max(increasing, decreasing) / len(pairings)
+    return increasing, decreasing
 
 
 def _longest_non_decreasing(keys: Sequence[tuple[int, ...]]) -> int:

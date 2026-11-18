@@ -123,6 +123,7 @@ class Cluster:
     ``display_start``/``display_end`` the padded interval. ``genes`` are the
     target genes in the padded interval; evidence genes lie fully inside the
     unpadded span. ``matches`` holds every GeneMatch of an evidence gene.
+    ``reversed`` says the candidate runs opposite to the reference (spec 8).
     """
 
     contig_id: str
@@ -139,6 +140,7 @@ class Cluster:
     touches_contig_edge: bool
     splits: tuple[SplitEvent, ...] = ()
     fusions: tuple[FusionEvent, ...] = ()
+    reversed: bool = False
 
     def __post_init__(self) -> None:
         if not 0 <= self.start < self.end:
