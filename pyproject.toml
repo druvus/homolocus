@@ -10,7 +10,6 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-# authors = [{ name = "Your Name" }]
 keywords = ["bioinformatics", "genomics", "bacteria", "homology", "synteny", "pathogenicity island"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -22,16 +21,19 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
+# Tested floors, no caps (spec 15). CI's minimum-versions job installs exactly these.
 dependencies = [
-    "biopython",
-    "pandas",
-    "matplotlib",
-    "pyrodigal",
+    "biopython>=1.80",
+    "pandas>=2.0",
+    "matplotlib>=3.8",
+    "pyrodigal>=3.0",
 ]
 
-# [project.urls]
-# Homepage = "https://github.com/<user>/homolocus"
-# Issues = "https://github.com/<user>/homolocus/issues"
+[project.urls]
+Homepage = "https://github.com/emilhaegglund/homolocus"
+Source = "https://github.com/emilhaegglund/homolocus"
+Issues = "https://github.com/emilhaegglund/homolocus/issues"
+Changelog = "https://github.com/emilhaegglund/homolocus/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
@@ -48,6 +50,10 @@ homolocus = "homolocus.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/homolocus"]
+
+[tool.hatch.build.targets.sdist]
+# Development tooling, not needed to build or test the package.
+exclude = [".claude", ".github"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

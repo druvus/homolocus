@@ -854,7 +854,7 @@ name = "homolocus"
 version = "0.1.0"
 description = "Find homologous genomic regions in bacterial genomes from the proteins of a reference region, tolerant of gene loss, insertions, duplications and rearrangements."
 requires-python = ">=3.10"
-dependencies = ["biopython", "pandas", "matplotlib", "pyrodigal"]
+dependencies = ["biopython>=1.80", "pandas>=2.0", "matplotlib>=3.8", "pyrodigal>=3.0"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "hypothesis", "ruff", "mypy", "pandas-stubs"]
@@ -868,7 +868,8 @@ homolocus = "homolocus.cli:main"
 - DIAMOND is an external executable checked at runtime.
 - Tests needing DIAMOND are marked `@pytest.mark.diamond` and skipped with a clear message when it is absent.
 - **[DECIDED]** Continuous integration (GitHub Actions, `.github/workflows/tests.yml`) runs `ruff check`, `ruff format --check`, `mypy src` and the full test suite on Python 3.10–3.13 for every pull request and push to `main`. It installs DIAMOND 2.2.9 from the official release, pinned by SHA-256. It sets `HOMOLOCUS_REQUIRE_DIAMOND=1`, which makes a missing DIAMOND a test failure instead of a skip.
-- Version pinning of runtime dependencies and platform notes are decided during implementation.
+- **[PROPOSED]** Runtime dependencies carry tested lower bounds and no upper bounds: Biopython 1.80, pandas 2.0, Matplotlib 3.8, Pyrodigal 3.0. A CI job (`minimum versions`) installs exactly these versions on Python 3.10, with NumPy below 2 because pandas 2.0 is built against NumPy 1, and runs the full suite. A floor that cannot be proven is raised, not guessed.
+- **[PROPOSED]** Releases: a CI job (`build`) builds the sdist and wheel on every pull request, checks them with `twine check --strict`, checks the wheel contents and installs the wheel into a clean environment to run `homolocus --help`. `.github/workflows/release.yml` builds again on a `v*` tag, refuses a tag that differs from the package version, and publishes to PyPI through Trusted Publishing from the `pypi` environment. Tagging and enabling the publisher are the maintainer's steps. `CHANGELOG.md` follows Keep a Changelog.
 - mypy runs in strict mode. Missing type information is ignored only for Biopython, which ships none. pandas is typed through `pandas-stubs`.
 - The quality-gate tools of section 17 ([crapper](https://github.com/unclebob/crapper), [dryer](https://github.com/unclebob/dryer), [mutator](https://github.com/unclebob/mutator)) are external, optional development tools checked out next to the repository. They are not Python dependencies of the package. Their output (`.metrics/`, `target/`) is not committed.
 
@@ -883,6 +884,10 @@ homolocus/
 ├── LICENSE
 ├── SPECIFICATION.md
 ├── CLAUDE.md
+├── CHANGELOG.md
+├── .github/workflows/
+│   ├── tests.yml                  # lint, types, tests, minimum versions, build
+│   └── release.yml                # build and publish on a v* tag
 ├── src/homolocus/
 │   ├── __init__.py
 │   ├── cli.py
@@ -999,6 +1004,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 22. RegionFinder constructor, candidate IDs, summary and gene-row layout, flag tokens, float precision, analysis.json keys, managed files, no self-search without grouping, 12, 14.
 23. Matched-gene colour and its tie rule, grey shades, per-line axes, best-copy outline, plotting API and plot files, 11.
 24. CLI options generated from the configuration dataclasses, exit codes and the stdout summary, 13.
+25. Tested dependency floors without caps, the build and minimum-versions CI jobs, and the tag-triggered PyPI release, 15.
 
 **Still open:**
 
