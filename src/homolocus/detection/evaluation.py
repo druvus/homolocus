@@ -227,7 +227,7 @@ def family_evidence(
         {m.target_gene_id for ms in by_member.values() for m in ms}, key=target_order.__getitem__
     )
     if not supported:
-        return FamilyEvidence(family.id, 0.0, False, None, None, ())
+        return FamilyEvidence(family.id, 0.0, False, None, None, (), family.name)
     coverage = {member: _coverage(by_member[member]) for member in supported}
     best_member = max(supported, key=lambda member: coverage[member])
     best_copy = min(
@@ -241,6 +241,7 @@ def family_evidence(
         best_member_id=best_member,
         best_copy_id=best_copy,
         copies=tuple(copies),
+        family_name=family.name,
     )
 
 
