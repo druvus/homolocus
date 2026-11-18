@@ -163,7 +163,21 @@ class GenomeSetResults:
     results: tuple[RegionResults, ...]
 
     def __post_init__(self) -> None:
+        if not self.results:
+            raise ValueError("a genome set needs at least one genome")
+        if len({r.families for r in self.results}) > 1:
+            raise ValueError("every genome in a set must have the same reference families")
         check_genome_names(r.genome.name for r in self.results)
+
+    @property
+    def families(self) -> ReferenceFamilies:
+        """The reference families, shared by every genome."""
+        (families,) = {r.families for r in self.results}
+        return families
+
+    def items(self) -> Iterator[tuple[str, RegionResults]]:
+        """Each genome's name with its results, in input order."""
+        return ((_name(r), r) for r in self.results)
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -182,6 +196,12 @@ class GenomeSetResults:
             if results.genome.name == name:
                 return results
         raise KeyError(name)
+
+    def plot(self) -> "Figure":
+        """Combined overview: the reference, then every genome's candidates (spec 11)."""
+        from homolocus.visualization.region_plot import genome_set_figure  # noqa: PLC0415
+
+        return genome_set_figure(self)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Every candidate of every genome, ``genome`` first (spec 12, 14)."""

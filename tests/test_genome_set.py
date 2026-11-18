@@ -3,10 +3,13 @@
 from dataclasses import replace
 
 import pytest
+from matplotlib.figure import Figure
 
-from homolocus import DiamondSearch, GenomeSetResults, RegionFinder
+from homolocus import DiamondSearch, GenomeSetResults, ReferenceFamilies, RegionFinder
 from homolocus.results import SUMMARY_COLUMNS
-from sample_world import GENOME, REFERENCE
+from homolocus.visualization.layout import genome_set_tracks, overview_tracks
+from homolocus.visualization.region_plot import overview_figure
+from sample_world import FAMILIES, GENOME, REFERENCE
 from sample_world import results as sample_results
 from scenario_world import Slot, World, genome, run
 
@@ -101,3 +104,64 @@ def test_each_genome_matches_a_run_on_its_own() -> None:
     together = RegionFinder(reference, search=DiamondSearch(threads=1)).find_all(genomes)
     for alone in genomes:
         assert together[alone.name] == run(reference, alone)
+
+
+def three_genomes() -> GenomeSetResults:
+    """Genome a and c have two candidates each; b has none."""
+    return GenomeSetResults((named("a"), named("b", candidates=()), named("c")))
+
+
+def test_combined_tracks_are_the_reference_then_each_genome_in_rank_order() -> None:
+    tracks = genome_set_tracks(three_genomes())
+    single = overview_tracks(named("a"))
+    assert tracks[0].title == single[0].title
+    assert [t.title.split(" · ")[:2] for t in tracks[1:]] == [
+        ["a", "#1 candidate_001"],
+        ["a", "#2 candidate_002"],
+        ["c", "#1 candidate_001"],
+        ["c", "#2 candidate_002"],
+    ]
+    assert tracks[1].title == "a · " + single[1].title
+    assert tracks[1].glyphs == single[1].glyphs
+
+
+def test_genomes_without_candidates_are_named_on_the_reference_line() -> None:
+    assert genome_set_tracks(three_genomes())[0].note == "no candidates: b"
+    assert genome_set_tracks(GenomeSetResults((named("a"),)))[0].note == ""
+    nothing = GenomeSetResults((named("a", candidates=()), named("b", candidates=())))
+    assert genome_set_tracks(nothing)[0].note == "no candidates: a, b"
+
+
+def test_combined_overview_has_one_axis_per_line_and_one_legend() -> None:
+    found = three_genomes()
+    figure = found.plot()
+    assert isinstance(figure, Figure)
+    assert figure.canvas.manager is None
+    tracks = genome_set_tracks(found)
+    assert [a.get_title(loc="left") for a in figure.axes] == [t.title for t in tracks]
+    (legend,) = figure.legends
+    assert [t.get_text() for t in legend.get_texts()] == [
+        t.get_text() for t in overview_figure(named("a")).legends[0].get_texts()
+    ]
+    assert "no candidates: b" in [t.get_text() for t in figure.axes[0].texts]
+
+
+def test_a_genome_set_needs_at_least_one_genome() -> None:
+    with pytest.raises(ValueError, match="at least one genome"):
+        GenomeSetResults(())
+
+
+def test_genomes_in_a_set_share_one_reference() -> None:
+    other = named("b", families=ReferenceFamilies(FAMILIES.families[:3]))
+    with pytest.raises(ValueError, match="same reference families"):
+        GenomeSetResults((named("a"), other))
+    assert GenomeSetResults((named("a"), named("b"))).families == FAMILIES
+
+
+def test_items_pair_each_name_with_its_results() -> None:
+    found = three_genomes()
+    assert [(name, r.genome.name) for name, r in found.items()] == [
+        ("a", "a"),
+        ("b", "b"),
+        ("c", "c"),
+    ]
