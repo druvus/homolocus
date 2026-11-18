@@ -1,6 +1,7 @@
 """Command-line interface: ``homolocus find`` (spec 13)."""
 
 import dataclasses
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -9,11 +10,13 @@ from genome_files import fasta, genbank
 from homolocus import (
     DiamondSearch,
     FamilyGrouping,
+    GenomeSetResults,
     RegionDetection,
     RegionFinder,
     ScoringWeights,
 )
 from homolocus.cli import FinderSettings, build_parser, finder_settings, main
+from sample_world import GENOME as SAMPLE_GENOME
 from sample_world import results as sample_results
 
 REQUIRED = ["find", "--reference", "ref.gbk", "--genome", "target.fna", "--output", "out"]
@@ -256,3 +259,97 @@ def test_find_end_to_end_with_a_predicted_fasta_target(tmp_path, dna, make_recor
     assert lines[-1] == f"results written to {output}"
     for name in ("summary.tsv", "candidates/candidate_001.tsv", "plots/candidate_001.png"):
         assert (output / name).is_file()
+
+
+def test_genome_takes_several_paths_or_repeats() -> None:
+    argv = ["find", "--reference", "r.gbk", "--genome", "target.fna", "b.fna", "--genome", "c.gbk"]
+    args = build_parser().parse_args([*argv, "--output", "out"])
+    assert args.genome == ["target.fna", "b.fna", "c.gbk"]
+
+
+@pytest.fixture
+def two_targets(inputs, tmp_path, dna, make_record):
+    """Command-line arguments with a second GenBank target, strain_b.gbk."""
+    second = genbank(tmp_path / "strain_b.gbk", "t9", dna, make_record)
+    genome_at = inputs.index("--genome") + 1
+    return [*inputs[: genome_at + 1], str(second), *inputs[genome_at + 1 :]]
+
+
+@pytest.fixture
+def find_all_calls(monkeypatch):
+    """Replace the multi-genome search with sample results, one per genome read."""
+    calls = []
+
+    def sample_for(genome):
+        """The sample results under this genome's name; strain_b finds nothing."""
+        named = replace(SAMPLE_GENOME, name=genome.name)
+        if genome.name == "strain_b":
+            return sample_results(genome=named, candidates=())
+        return sample_results(genome=named)
+
+    def fake_find_all(finder, genomes):
+        genomes = list(genomes)
+        calls.append(genomes)
+        return GenomeSetResults(tuple(sample_for(g) for g in genomes))
+
+    monkeypatch.setattr(RegionFinder, "find_all", fake_find_all)
+    return calls
+
+
+def test_several_genomes_are_named_from_files_and_written_per_genome(
+    two_targets, find_all_calls, capsys
+) -> None:
+    assert main(two_targets) == 0
+    ((first, second),) = find_all_calls
+    assert (first.name, second.name) == ("target", "strain_b")
+    output = Path(two_targets[-1])
+    assert (output / "summary.tsv").read_text().startswith("genome\trank\t")
+    assert (output / "plots" / "regions.png").is_file()
+    assert (output / "target" / "candidates" / "candidate_001.tsv").is_file()
+    assert (output / "strain_b" / "summary.tsv").is_file()
+    assert capsys.readouterr().out.splitlines() == [
+        "target  #1 candidate_001  t1:10001-14500  score 0.827  coverage 0.75",
+        "target  #2 candidate_002  t1:100001-102100  score 0.740  coverage 0.50",
+        "strain_b: no candidates",
+        f"results written to {output}",
+    ]
+
+
+def test_an_unreadable_genome_fails_before_any_search(
+    two_targets, find_all_calls, tmp_path, capsys
+) -> None:
+    missing = str(tmp_path / "missing.fna")
+    broken = [missing if a.endswith("strain_b.gbk") else a for a in two_targets]
+    assert main(broken) == 1
+    assert "missing.fna" in capsys.readouterr().err
+    assert find_all_calls == []
+    assert not Path(broken[-1]).exists()
+
+
+def test_genomes_with_the_same_file_name_are_rejected(inputs, tmp_path, dna, make_record, capsys):
+    (tmp_path / "other").mkdir()
+    clash = genbank(tmp_path / "other" / "target.gbk", "t2", dna, make_record)
+    genome_at = inputs.index("--genome") + 1
+    argv = [*inputs[: genome_at + 1], str(clash), *inputs[genome_at + 1 :]]
+    assert main(argv) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("homolocus: error: duplicate genome name 'target'")
+    assert len(err.splitlines()) == 1
+
+
+@pytest.mark.diamond
+def test_find_end_to_end_with_two_fasta_targets(tmp_path, dna, make_record, capsys) -> None:
+    orfs = [dna.orf(150) for _ in range(3)]
+    reference = genbank(tmp_path / "ref.gbk", "ref", dna, make_record, orfs)
+    first = fasta(tmp_path / "a.fna", "c1", dna, orfs)
+    second = fasta(tmp_path / "b.fna", "c1", dna, [dna.orf(150) for _ in range(3)])
+    output = tmp_path / "out"
+    argv = ["find", "--reference", str(reference), "--genome", str(first), str(second)]
+    assert main([*argv, "--output", str(output), "--threads", "1"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith("a  #1 candidate_001  c1:")
+    assert lines[1] == "b: no candidates"
+    summary = (output / "summary.tsv").read_text().splitlines()
+    assert [row.split("\t")[0] for row in summary[1:]] == ["a"]
+    assert (output / "a" / "plots" / "candidate_001.png").is_file()
+    assert (output / "plots" / "regions.png").is_file()

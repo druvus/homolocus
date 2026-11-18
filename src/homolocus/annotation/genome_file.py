@@ -43,7 +43,10 @@ def detect_format(path: str | Path) -> FileFormat:
 
 
 def read_genome(path: str | Path, annotation: Annotation = "auto") -> Genome:
-    """Read a target genome from a GenBank or FASTA file (spec 2.2)."""
+    """Read a target genome from a GenBank or FASTA file (spec 2.2).
+
+    The genome is named after the file, without its extension (spec 5.3).
+    """
     if annotation not in ANNOTATION_MODES:
         raise ValueError(f"unknown annotation mode {annotation!r}; expected 'auto' or 'pyrodigal'")
     records = _read_fasta(path) if detect_format(path) == "fasta" else read_records(path)
@@ -65,4 +68,4 @@ def _predicted_genome(records: list[SeqRecord], source: str) -> Genome:
     check_unique_ids(records, source)
     predicted = predict_genes({record_id(r): record_sequence(r) for r in records})
     contigs = {record_id(r): record_contig(r, predicted[record_id(r)]) for r in records}
-    return Genome(contigs=contigs, source=source)
+    return Genome(contigs=contigs, name=Path(source).stem, source=source)

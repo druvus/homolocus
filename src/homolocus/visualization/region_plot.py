@@ -10,13 +10,15 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch, Polygon
 
-from homolocus.results import RegionResults
+from homolocus.models.gene_family import ReferenceFamilies
+from homolocus.results import GenomeSetResults, RegionResults
 from homolocus.visualization.layout import (
     GeneGlyph,
     Track,
     detail_tracks,
     family_colours,
     family_labels,
+    genome_set_tracks,
     overview_tracks,
 )
 
@@ -49,13 +51,21 @@ def arrow_polygon(glyph: GeneGlyph, *, axis_span: int) -> list[tuple[float, floa
 
 def overview_figure(results: RegionResults) -> Figure:
     """Reference line and one line per candidate (spec 11.1)."""
-    tracks = overview_tracks(results)
+    return _lines_figure(overview_tracks(results), results.families)
+
+
+def genome_set_figure(results: GenomeSetResults) -> Figure:
+    """Reference line, then every candidate of every genome (spec 11)."""
+    return _lines_figure(genome_set_tracks(results), results.families)
+
+
+def _lines_figure(tracks: Sequence[Track], families: ReferenceFamilies) -> Figure:
     figure = Figure(figsize=(11, 1.3 * len(tracks) + 0.9), layout="constrained")
     figure.set_facecolor(SURFACE)
     axes = figure.subplots(len(tracks), 1, squeeze=False)[:, 0]
     for axis, track in zip(axes, tracks, strict=True):
         _draw_track(axis, track)
-    _family_legend(figure, results, tracks)
+    _family_legend(figure, families, tracks)
     return figure
 
 
@@ -78,7 +88,7 @@ def candidate_figure(results: RegionResults, rank: int) -> Figure:
         x=0.01,
         ha="left",
     )
-    _family_legend(figure, results, tracks)
+    _family_legend(figure, results.families, tracks)
     return figure
 
 
@@ -148,9 +158,9 @@ def _recessive_axes(axis: Axes, label: str) -> None:
     axis.set_xlabel(label, fontsize=8, color=TEXT_SECONDARY)
 
 
-def _family_legend(figure: Figure, results: RegionResults, tracks: Sequence[Track]) -> None:
+def _family_legend(figure: Figure, families: ReferenceFamilies, tracks: Sequence[Track]) -> None:
     shown = {g.family_id for track in tracks for g in track.glyphs if g.role != "missing"}
-    colours, labels = family_colours(results.families), family_labels(results.families)
+    colours, labels = family_colours(families), family_labels(families)
     handles = [
         Patch(facecolor=colour, edgecolor=SURFACE, label=labels[family_id])
         for family_id, colour in colours.items()

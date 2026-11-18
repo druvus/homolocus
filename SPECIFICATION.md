@@ -114,6 +114,8 @@ Rules:
 
 The target is one assembly per analysis. The assembly may contain one or more contigs.
 
+- **[PROPOSED]** A run may take several target assemblies. Each is searched and detected on its own; the reference families and the self-search are computed once and shared. A genome's results are identical to a run with that genome alone.
+
 Supported inputs for v0.1:
 
 - GenBank (`.gb`, `.gbk`): use the supplied CDS annotations.
@@ -279,6 +281,8 @@ class Genome:
 ```
 
 Preserve all contigs. Provide convenient access to genes across contigs. No assembly QC statistics.
+
+- **[PROPOSED]** `Genome.from_file` sets `name` to the file name without its extension. Within one run, genome names must be unique and usable as a directory name (not empty, no `/`, not starting with `.`).
 
 ### 5.4 ReferenceRegion
 
@@ -739,6 +743,7 @@ Matplotlib only in v0.1.
 - **[DECIDED]** Family colours: families take the eight validated colour-blind-safe palette hues in reference order (blue `#2a78d6`, orange `#eb6834`, aqua `#1baf7a`, yellow `#eda100`, magenta `#e87ba4`, green `#008300`, violet `#6250d6`, red `#e34948`); family 9 reuses hue 1, and so on. Colour is never the only cue: every coloured gene carries its family ID as a label, and a legend maps family IDs to colours.
 - **[PROPOSED]** A matched target gene takes the colour of the family of its best-bit-score passing match (7.6); on equal bit scores, the family that comes first in reference order wins. Additional genes and reference genes without a protein are light grey (`#d9d8d2`) and unlabelled. Each overview line lists its missing families as text.
 - **[PROPOSED]** A named family is labelled `F001 sitA` on gene glyphs, in the legend and in the missing-families note; an unnamed one keeps its ID alone. In plots only, a name longer than 24 characters is cut to 23 characters and `…`.
+- **[PROPOSED]** With several target genomes, a combined overview shows the reference line, then every candidate of every genome: genomes in input order, candidates in rank order within each. Each candidate title starts with its genome name (`a · #1 candidate_001 · …`). Genomes without candidates are listed in a note on the reference line (`no candidates: c`). Family colours, labels and the legend are shared, since every genome uses the same reference.
 - **[PROPOSED]** Every line has its own 1-based x-axis over its interval: the reference region, or a candidate's display interval (10).
 
 ### 11.2 Individual candidate plot
@@ -781,6 +786,7 @@ results.plot()
 The API exposes intermediate models (alignments, matches, families, candidates, score components). The exact signatures stay provisional. No save/load of results in v0.1.
 
 - **[DECIDED]** `results.to_dataframe()` has one row per candidate (the `summary.tsv` columns); `results.genes_dataframe()` has the gene-level rows (the candidate TSV columns plus `candidate_id`).
+- **[PROPOSED]** `finder.find_all(genomes)` returns `GenomeSetResults`: the `RegionResults` of each genome in input order, iterable and indexable by genome name. Its `to_dataframe()` holds every candidate of every genome with a leading `genome` column, `plot()` returns the combined overview (11), and `write(output_dir)` writes the multi-genome layout (14). Like `find`, it has no file side effects.
 - **[DECIDED]** `finder.find(genome)` has no file side effects: DIAMOND runs in a temporary directory and the raw tables and token mapping are kept in the results. `results.write(output_dir)` writes every output file of section 14, the raw DIAMOND tables byte for byte.
 - **[PROPOSED]** `RegionFinder(reference, search=DiamondSearch(), family_grouping=FamilyGrouping(), detection=RegionDetection(), scoring=ScoringWeights())`. `results.best_candidate` is `None` when nothing passes.
 
@@ -803,6 +809,7 @@ homolocus find --reference ecoli_pai.gbk --genome target.gbk --output results/
 `--start` and `--end` are 1-based inclusive. The CLI exposes DIAMOND thresholds, `max_target_seqs`, detection thresholds, family grouping, scoring weights and padding. A configuration file is not required in v0.1.
 
 - **[PROPOSED]** Options are generated from the configuration dataclasses: one flag per field of `DiamondSearch`, `FamilyGrouping` and `RegionDetection`, named after the field (`min_identity` → `--min-identity`), and one per `ScoringWeights` field prefixed `--weight-` (`--weight-order`). `--no-family-grouping` disables grouping (`family_min_identity=None`) and `--annotation {auto,pyrodigal}` selects target annotation. Unset flags keep the dataclass defaults, which `--help` shows. `--start` and `--end` are given together or not at all.
+- **[PROPOSED]** `--genome` takes one or more paths (`--genome a.fna b.fna`, or repeated). All genomes are read before any search, so an unreadable one exits with 1 and no output. With several genomes each stdout candidate line starts with its genome name, and a genome without candidates prints `<genome>: no candidates`.
 - **[PROPOSED]** Exit codes: 0 on success; 2 for a usage error or an invalid setting; 1 when input cannot be read or is invalid, or DIAMOND is missing or fails. Errors are one line on stderr without a traceback.
 - **[PROPOSED]** After writing, `find` prints one line per candidate to stdout (rank, candidate ID, `contig:start-end` 1-based, score, reference coverage, flags), or `no candidates`, then the output directory. Warnings still go to stderr through the `warnings` module.
 
@@ -841,6 +848,7 @@ results/
   - Floats are written with 6 significant digits.
   - `analysis.json` is sorted, indented JSON with `homolocus_version`, `tool_versions` (DIAMOND, Pyrodigal, Biopython), `parameters`, `reference`, `target`, `families`, `reference_genes_without_protein`, `skipped_features`, `untranslatable_genes` (coordinates 1-based) and `warnings`.
   - Managed files are `summary.tsv`, `candidates/candidate_*.tsv`, `plots/regions.png`, `plots/candidate_*.png`, `alignments/*` and `analysis.json`. Rewriting removes stale `candidate_*.tsv` and `candidate_*.png` files from an earlier run and leaves other files alone.
+- **[PROPOSED]** With several target genomes, `results/<genome>/` holds the layout above for each genome, `results/summary.tsv` lists every candidate of every genome with a leading `genome` column (genomes in input order, then rank), and `results/plots/regions.png` is the combined overview (11). A single genome keeps the flat layout above. Subdirectories of genomes from an earlier run are left alone.
   - With family grouping disabled the self-search is not run and `alignments/reference_self.tsv` is empty.
 
 ────────
@@ -1009,6 +1017,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 24. CLI options generated from the configuration dataclasses, exit codes and the stdout summary, 13.
 25. Tested dependency floors without caps, the build and minimum-versions CI jobs, and the tag-triggered PyPI release, 15.
 26. Family names from `/gene`, else `/product`, joined with `/`; `F001 sitA` labels truncated at 24 characters in plots; `family_name` in candidate TSVs, 5.5, 7.6, 11, 14.
+27. Several target genomes per run: shared families, per-genome searches, genome names from file names, `find_all` and `GenomeSetResults`, repeatable `--genome`, per-genome subdirectories with a combined summary and overview plot, 2.2, 5.3, 11, 12, 13, 14.
 
 **Still open:**
 

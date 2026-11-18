@@ -6,14 +6,14 @@ is never the only cue. Coordinates are 1-based inclusive.
 """
 
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from homolocus.coordinates import to_one_based
 from homolocus.models.cluster import Cluster
 from homolocus.models.gene import Gene, Strand
 from homolocus.models.gene_family import ReferenceFamilies
-from homolocus.results import RegionResults, candidate_flags
+from homolocus.results import GenomeSetResults, RegionResults, candidate_flags
 
 PALETTE = (
     "#2a78d6",
@@ -147,6 +147,28 @@ def overview_tracks(results: RegionResults) -> tuple[Track, ...]:
         )
     candidates = (candidate_track(results, rank) for rank in range(1, len(results.candidates) + 1))
     return (reference, *candidates)
+
+
+def genome_set_tracks(results: GenomeSetResults) -> tuple[Track, ...]:
+    """The reference line, then every candidate of every genome (spec 11).
+
+    Genomes keep their input order and candidates their rank. Each candidate
+    title starts with its genome; genomes without candidates are named in a
+    note on the reference line.
+    """
+    empty = [name for name, found in results.items() if not found.candidates]
+    reference = replace(reference_track(next(iter(results))), note=_no_candidates_note(empty))
+    candidates = (
+        replace(track, title=f"{name} · {track.title}")
+        for name, found in results.items()
+        for track in overview_tracks(found)[1:]
+        if found.candidates
+    )
+    return (reference, *candidates)
+
+
+def _no_candidates_note(names: list[str]) -> str:
+    return f"no candidates: {', '.join(names)}" if names else ""
 
 
 def detail_tracks(results: RegionResults, rank: int) -> tuple[Track, Track]:

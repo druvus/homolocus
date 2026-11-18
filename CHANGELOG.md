@@ -7,6 +7,14 @@ All notable changes to homolocus are recorded here. The format follows [Keep a C
 ### Added
 
 - Families are named from the reference GenBank annotation: their genes' `/gene` qualifiers, else `/product`. Names appear in plot labels and legends (`F001 sitA`), in the missing-families note, in a new `family_name` column of the candidate TSVs, and on `GeneFamily.name` and `FamilyEvidence.family_name`.
+- Several target genomes in one run:
+  - `--genome` takes one or more files, and `RegionFinder.find_all()` returns `GenomeSetResults`;
+  - families and the self-search are computed once, and each genome's results equal a run on it alone;
+  - output has a folder per genome, a combined `summary.tsv` with a `genome` column, and a combined overview plot.
+
+### Changed
+
+- Genomes read from files are named after the file (`Genome.name`), so `analysis.json` now records `target.name` instead of `null`.
 
 ## [0.1.0] - Unreleased
 

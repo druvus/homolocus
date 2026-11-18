@@ -3,7 +3,8 @@
 Every file is deterministic: identical results give byte-identical files.
 Managed files are summary.tsv, candidates/candidate_*.tsv, alignments/*,
 analysis.json and plots/ (regions.png, candidate_*.png); stale candidate files
-are removed, other files are left alone.
+are removed, other files are left alone. Several genomes get one such
+directory each, plus a combined summary.tsv and plots/regions.png.
 """
 
 import json
@@ -18,8 +19,12 @@ import pandas as pd
 from homolocus.coordinates import to_one_based
 from homolocus.models.gene import Gene
 from homolocus.models.skipped_feature import SkippedFeature
-from homolocus.results import GENE_COLUMNS, RegionResults
-from homolocus.visualization.region_plot import candidate_figure, overview_figure
+from homolocus.results import GENE_COLUMNS, GenomeSetResults, RegionResults
+from homolocus.visualization.region_plot import (
+    candidate_figure,
+    genome_set_figure,
+    overview_figure,
+)
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -45,6 +50,16 @@ def write_results(results: RegionResults, output_dir: str | Path) -> None:
     metadata = json.dumps(analysis(results), indent=2, sort_keys=True)
     (root / "analysis.json").write_text(metadata + "\n", encoding="utf-8")
     _write_plots(results, plots)
+
+
+def write_genome_set(results: GenomeSetResults, output_dir: str | Path) -> None:
+    """Write each genome to ``output_dir/<genome>/``, then the combined files (spec 14)."""
+    root = Path(output_dir)
+    for name, genome_results in results.items():
+        write_results(genome_results, root / name)
+    (root / "plots").mkdir(exist_ok=True)  # root exists: a set has at least one genome
+    _write_tsv(results.to_dataframe(), root / "summary.tsv")
+    _save_png(genome_set_figure(results), root / "plots" / "regions.png")
 
 
 def _write_candidates(results: RegionResults, directory: Path) -> None:
