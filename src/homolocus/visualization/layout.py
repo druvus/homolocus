@@ -56,7 +56,11 @@ class GeneGlyph:
 
 @dataclass(frozen=True)
 class Track:
-    """One line of a plot: a contig interval (1-based) and its gene glyphs."""
+    """One line of a plot: a contig interval (1-based) and its gene glyphs.
+
+    A ``reversed`` track is drawn on a descending axis, so it reads in the
+    reference direction (spec 11.1).
+    """
 
     title: str
     contig_id: str
@@ -64,6 +68,7 @@ class Track:
     end: int
     glyphs: tuple[GeneGlyph, ...]
     note: str = ""
+    reversed: bool = False
 
 
 def family_colours(families: ReferenceFamilies) -> dict[str, str]:
@@ -128,6 +133,7 @@ def candidate_track(results: RegionResults, rank: int, *, detail: bool = False) 
         end=end,
         glyphs=tuple(glyphs),
         note=_missing_note(cluster),
+        reversed=cluster.reversed,
     )
 
 
@@ -219,7 +225,8 @@ def _candidate_title(results: RegionResults, rank: int, cluster: Cluster) -> str
         f"coverage {cluster.reference_coverage:.2f}",
     ]
     flags = candidate_flags(cluster)
-    return " · ".join([*parts, flags] if flags else parts)
+    marks = [flags] if flags else []
+    return " · ".join([*parts, *marks, *(["reversed"] if cluster.reversed else [])])
 
 
 def _missing_note(cluster: Cluster) -> str:

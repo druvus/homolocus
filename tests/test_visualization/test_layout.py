@@ -178,3 +178,19 @@ def test_family_labels_add_the_name_and_cut_long_ones() -> None:
     assert family_label("F001", "sitA") == "F001 sitA"
     assert family_label("F002", "x" * 24) == "F002 " + "x" * 24
     assert family_label("F002", "x" * 25) == "F002 " + "x" * 23 + "…"
+
+
+def mixed_directions():
+    """Sample results whose second candidate is called reversed."""
+    found = results()
+    flipped = replace(found.candidates[1], reversed=True)
+    return replace(found, candidates=(found.candidates[0], flipped))
+
+
+def test_reversed_candidates_are_marked_on_their_track() -> None:
+    reference, forward, backward = overview_tracks(mixed_directions())
+    assert (reference.reversed, forward.reversed, backward.reversed) == (False, False, True)
+    assert backward.title.endswith(" · reversed")
+    assert "reversed" not in forward.title
+    detail_reference, detail = detail_tracks(mixed_directions(), 2)
+    assert (detail_reference.reversed, detail.reversed) == (False, True)

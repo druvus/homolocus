@@ -1,5 +1,7 @@
 """Rendering plots with Matplotlib (spec 11)."""
 
+from dataclasses import replace
+
 import pytest
 from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
@@ -156,3 +158,22 @@ def test_overview_without_candidates_shows_the_reference_and_a_note() -> None:
     figure = overview_figure(results(candidates=()))
     assert len(figure.axes) == 1
     assert "no candidates" in [t.get_text() for t in figure.axes[0].texts]
+
+
+def test_reversed_lines_run_in_the_reference_direction_on_a_descending_axis() -> None:
+    found = results()
+    flipped = replace(found.candidates[1], reversed=True)
+    mixed = replace(found, candidates=(found.candidates[0], flipped))
+    reference, forward, backward = overview_figure(mixed).axes
+    track = overview_tracks(mixed)[2]
+    left, right = backward.get_xlim()
+    assert left > right
+    pad = 0.01 * (track.end - track.start + 1)
+    assert (left, right) == pytest.approx((track.end + pad, track.start - pad))
+    assert all(track.start <= tick <= track.end for tick in backward.get_xticks())
+    assert backward.get_xlabel() == "t1 position (1-based, reversed)"
+    for axis in (reference, forward):
+        assert axis.get_xlim()[0] < axis.get_xlim()[1]
+        assert "reversed" not in axis.get_xlabel()
+    detail = candidate_figure(mixed, 2).axes[1]
+    assert detail.get_xlim()[0] > detail.get_xlim()[1]
