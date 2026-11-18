@@ -18,7 +18,7 @@ from homolocus.coordinates import to_one_based
 from homolocus.finder import RegionFinder
 from homolocus.models.genome import Genome
 from homolocus.models.reference import ReferenceRegion
-from homolocus.results import RegionResults, candidate_flags
+from homolocus.results import GenomeSetResults, RegionResults, candidate_flags
 from homolocus.search.diamond import DiamondError
 
 OPTION_HELP = {
@@ -95,10 +95,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-def summary_lines(results: RegionResults, output_dir: str) -> list[str]:
-    """Terminal summary: one line per candidate, or ``no candidates``, then the output."""
-    lines = [_candidate_line(results, rank) for rank in range(1, len(results.candidates) + 1)]
-    return [*(lines or ["no candidates"]), f"results written to {output_dir}"]
+def summary_lines(results: RegionResults | GenomeSetResults, output_dir: str) -> list[str]:
+    """Terminal summary: one line per candidate, or ``no candidates``, then the output.
+
+    With several genomes each candidate line starts with its genome, and a
+    genome without candidates gets one ``<genome>: no candidates`` line.
+    """
+    if isinstance(results, RegionResults):
+        lines = _candidate_lines(results) or ["no candidates"]
+    else:
+        lines = [line for name, found in results.items() for line in _genome_lines(name, found)]
+    return [*lines, f"results written to {output_dir}"]
+
+
+def _genome_lines(name: str, results: RegionResults) -> list[str]:
+    lines = [f"{name}  {line}" for line in _candidate_lines(results)]
+    return lines or [f"{name}: no candidates"]
+
+
+def _candidate_lines(results: RegionResults) -> list[str]:
+    return [_candidate_line(results, rank) for rank in range(1, len(results.candidates) + 1)]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -138,11 +154,12 @@ def _candidate_line(results: RegionResults, rank: int) -> str:
     return "  ".join(part for part in parts if part)
 
 
-def _find(args: argparse.Namespace, settings: FinderSettings) -> RegionResults:
+def _find(args: argparse.Namespace, settings: FinderSettings) -> RegionResults | GenomeSetResults:
+    """Read every input first, then search one genome or several (spec 13)."""
     reference = ReferenceRegion.from_genbank(
         args.reference, contig=args.contig, start=args.start, end=args.end
     )
-    genome = Genome.from_file(args.genome, annotation=args.annotation)
+    genomes = [Genome.from_file(path, annotation=args.annotation) for path in args.genome]
     finder = RegionFinder(
         reference,
         search=settings.search,
@@ -150,7 +167,7 @@ def _find(args: argparse.Namespace, settings: FinderSettings) -> RegionResults:
         detection=settings.detection,
         scoring=settings.scoring,
     )
-    results = finder.find(genome)
+    results = finder.find(genomes[0]) if len(genomes) == 1 else finder.find_all(genomes)
     results.write(args.output)
     return results
 
@@ -161,7 +178,13 @@ def _add_inputs(parser: argparse.ArgumentParser) -> None:
     inputs.add_argument("--contig", help="reference record; optional for a single record")
     inputs.add_argument("--start", type=int, help="region start, 1-based inclusive")
     inputs.add_argument("--end", type=int, help="region end, 1-based inclusive")
-    inputs.add_argument("--genome", required=True, help="target genome, GenBank or FASTA")
+    inputs.add_argument(
+        "--genome",
+        required=True,
+        nargs="+",
+        action="extend",
+        help="target genomes, GenBank or FASTA; one or more, each named after its file",
+    )
     inputs.add_argument(
         "--annotation",
         choices=("auto", "pyrodigal"),
