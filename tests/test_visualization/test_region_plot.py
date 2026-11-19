@@ -3,15 +3,18 @@
 from dataclasses import replace
 
 import pytest
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon, Rectangle
 
+from homolocus import Gene, GeneFamily, ReferenceFamilies, ReferenceRegion
 from homolocus.visualization.layout import GeneGlyph, detail_tracks, overview_tracks
 from homolocus.visualization.region_plot import (
     SURFACE,
     arrow_polygon,
     candidate_figure,
+    legend_columns,
     overview_figure,
 )
 from sample_world import results
@@ -98,8 +101,8 @@ def test_overview_has_one_axis_per_track_with_arrows_titles_and_notes() -> None:
         assert axis.get_xlim() == pytest.approx((track.start - pad, track.end + pad))
         assert all(track.start <= tick <= track.end for tick in axis.get_xticks())
     texts = [t.get_text() for t in figure.axes[1].texts]
-    assert "missing: F004" in texts
-    assert "F001 sitA" in texts
+    assert not [t for t in texts if t.startswith("missing")]
+    assert "sitA" in texts
 
 
 def test_overview_legend_lists_the_families() -> None:
@@ -177,3 +180,63 @@ def test_reversed_lines_run_in_the_reference_direction_on_a_descending_axis() ->
         assert "reversed" not in axis.get_xlabel()
     detail = candidate_figure(mixed, 2).axes[1]
     assert detail.get_xlim()[0] > detail.get_xlim()[1]
+
+
+def label_texts(axis):
+    return [t for t in axis.texts if t.get_text() and not t.get_text().startswith("no candidates")]
+
+
+def test_neighbouring_labels_alternate_between_two_rows_in_drawn_order() -> None:
+    found = results()
+    flipped = replace(found.candidates[1], reversed=True)
+    mixed = replace(found, candidates=(found.candidates[0], flipped))
+    for axis in overview_figure(mixed).axes:
+        drawn = sorted(label_texts(axis), key=lambda t: t.get_position()[0])
+        if axis.xaxis_inverted():
+            drawn.reverse()
+        heights = [t.get_position()[1] for t in drawn]
+        assert len(set(heights)) == min(2, len(heights))
+        assert all(a != b for a, b in zip(heights, heights[1:], strict=False))
+        assert heights[0] == min(heights)
+        assert all(h < axis.get_ylim()[1] for h in heights)
+
+
+def many_families():
+    """A reference of 18 genes, each its own family with a long product name."""
+    genes = tuple(
+        Gene(
+            "ref",
+            n * 1000,
+            n * 1000 + 900,
+            1,
+            "A" * 900,
+            "M",
+            product=f"type VI secretion protein {n}",
+        )
+        for n in range(18)
+    )
+    families = ReferenceFamilies(
+        tuple(GeneFamily(f"F{n + 1:03d}", (g.id,), g.product) for n, g in enumerate(genes))
+    )
+    reference = ReferenceRegion("ref", 0, 18_000, "A" * 18_000, genes)
+    return results(reference=reference, families=families, candidates=())
+
+
+def test_a_long_legend_wraps_into_rows_and_fits_the_figure() -> None:
+    figure = overview_figure(many_families())
+    canvas = FigureCanvasAgg(figure)
+    canvas.draw()
+    (legend,) = figure.legends
+    box, frame = legend.get_window_extent(), figure.bbox
+    assert frame.x0 <= box.x0
+    assert box.x1 <= frame.x1
+    texts = legend.get_texts()
+    assert len(texts) == 18
+    assert len({round(t.get_window_extent().y0) for t in texts}) > 1  # several rows
+    assert len({round(t.get_window_extent().x0) for t in texts}) > 1  # several columns
+
+
+def test_legend_columns_are_bounded_by_the_entries_and_at_least_one() -> None:
+    assert legend_columns(["a", "b"], 11) == 2
+    assert legend_columns(["x" * 400], 2) == 1
+    assert 1 < legend_columns(["F001 anmK"] * 20, 11) < 20

@@ -580,6 +580,7 @@ Reference genes are grouped before the main search:
 - **[PROPOSED]** Identity and coverage come from the aggregated self-search `GeneMatch` (5.7). Thresholds are inclusive. No e-value condition is added beyond DIAMOND's `hsp_evalue`.
 - **[PROPOSED]** Family IDs are `F001`, `F002`, … numbered in genomic order of their representatives (3 digits, more beyond 999).
 - **[PROPOSED]** A family's `name` comes from the reference annotation of its members: their `/gene` qualifiers, unique and in genomic order, joined with `/` (`tnpA/tnpB`); when no member has one, their `/product` qualifiers the same way; otherwise no name. Family IDs stay the keys in every model and file; the name is a label.
+- **[PROPOSED]** A `/product` made only of the words `hypothetical`, `uncharacterized`, `uncharacterised`, `conserved`, `putative` and `protein` (any case) does not name a family: "hypothetical protein", "conserved hypothetical protein" and "putative uncharacterized protein" are ignored, while "hypothetical protein YfaZ" or "type VI secretion system protein" still name one.
 - Configuration: `FamilyGrouping(family_min_identity=90, family_min_coverage=0.8)`. Setting `family_min_identity=None` disables grouping, so every gene is its own family.
 
 Effects:
@@ -744,8 +745,9 @@ Matplotlib only in v0.1.
 - **[PROPOSED]** Every candidate line is drawn in the reference direction, and never silently: a reversed candidate (section 8) keeps its real 1-based coordinates on a descending x-axis, its title ends with `· reversed`, and its axis reads `<contig> position (1-based, reversed)`. The reference line is never flipped. This holds for the overview, the combined overview and the candidate plot.
 
 - **[DECIDED]** Family colours: families take the eight validated colour-blind-safe palette hues in reference order (blue `#2a78d6`, orange `#eb6834`, aqua `#1baf7a`, yellow `#eda100`, magenta `#e87ba4`, green `#008300`, violet `#6250d6`, red `#e34948`); family 9 reuses hue 1, and so on. Colour is never the only cue: every coloured gene carries its family ID as a label, and a legend maps family IDs to colours.
-- **[PROPOSED]** A matched target gene takes the colour of the family of its best-bit-score passing match (7.6); on equal bit scores, the family that comes first in reference order wins. Additional genes and reference genes without a protein are light grey (`#d9d8d2`) and unlabelled. Each overview line lists its missing families as text.
-- **[PROPOSED]** A named family is labelled `F001 sitA` on gene glyphs, in the legend and in the missing-families note; an unnamed one keeps its ID alone. In plots only, a name longer than 24 characters is cut to 23 characters and `…`.
+- **[PROPOSED]** A matched target gene takes the colour of the family of its best-bit-score passing match (7.6); on equal bit scores, the family that comes first in reference order wins. Additional genes and reference genes without a protein are light grey (`#d9d8d2`) and unlabelled.
+- **[PROPOSED]** A gene arrow is labelled with its family's `/gene` names (unique, in genomic order, joined with `/`), else with the family ID (`anmK`, `F002`); products never go on arrows. Neighbouring arrow labels alternate between two heights so short neighbours do not collide. Legend entries read `F001 anmK` for a named family and `F002` otherwise, with a name longer than 24 characters cut to 23 characters and `…`. The legend wraps into as many columns as fit the figure width.
+- **[PROPOSED]** Missing families are not drawn as a note on plot lines; they are reported in `summary.tsv` (`missing_families`, 14) and the API. On the candidate plot they remain visible as grey reference genes.
 - **[PROPOSED]** With several target genomes, a combined overview shows the reference line, then every candidate of every genome: genomes in input order, candidates in rank order within each. Each candidate title starts with its genome name (`a · #1 candidate_001 · …`). Genomes without candidates are listed in a note on the reference line (`no candidates: c`). Family colours, labels and the legend are shared, since every genome uses the same reference.
 - **[PROPOSED]** Every line has its own 1-based x-axis over its interval: the reference region, or a candidate's display interval (10).
 
@@ -839,7 +841,7 @@ results/
 
 - All coordinates in files are 1-based inclusive.
 - `analysis.json` holds run metadata only: parameters, tool versions, thresholds, warnings, skipped features (pseudogenes, compound CDS, untranslatable genes), `reference_genes_without_protein`, and the reference families. It is **not** a reloadable results object.
-- **[PROPOSED]** `summary.tsv` columns: `rank, candidate_id, contig, start, end, span_bp, direction (forward|reversed), score, content, similarity, order, orientation, spacing, reference_coverage, mean_protein_coverage, n_target_genes, n_matched_genes, n_missing_families, flags`.
+- **[PROPOSED]** `summary.tsv` columns: `rank, candidate_id, contig, start, end, span_bp, direction (forward|reversed), score, content, similarity, order, orientation, spacing, reference_coverage, mean_protein_coverage, n_target_genes, n_matched_genes, n_missing_families, missing_families, flags`. `missing_families` lists the missing family IDs joined with `;` (`F002;F007`), empty when none.
 - **[PROPOSED]** Candidate TSV columns: `target_gene_id, locus_tag, product, start, end, strand, role (matched|additional), reference_gene_id, family_id, family_name, identity, query_coverage, subject_coverage, bit_score, is_best_copy, flags`.
 - **[PROPOSED]** Writing results is idempotent. Re-running into an existing output directory overwrites the files the package manages and leaves other files untouched. Identical input and parameters give identical output files: rows and candidates are ordered deterministically, and no output file carries a timestamp except the run metadata in `analysis.json`.
 - **[DECIDED]** `analysis.json` carries no timestamp either, so identical input and parameters give byte-identical output directories.
@@ -1022,6 +1024,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 26. Family names from `/gene`, else `/product`, joined with `/`; `F001 sitA` labels truncated at 24 characters in plots; `family_name` in candidate TSVs, 5.5, 7.6, 11, 14.
 27. Several target genomes per run: shared families, per-genome searches, genome names from file names, `find_all` and `GenomeSetResults`, repeatable `--genome`, per-genome subdirectories with a combined summary and overview plot, 2.2, 5.3, 11, 12, 13, 14.
 28. Candidate direction (order runs, then strands), `Cluster.reversed`, the `direction` summary column, and reversed candidates drawn on a descending axis, 5.8, 8, 11, 14.
+29. Uninformative products do not name families; arrows labelled by `/gene` name else family ID, staggered in two rows; a wrapping legend; missing families reported in `summary.tsv` instead of on plots, 7.6, 11, 14.
 
 **Still open:**
 

@@ -184,3 +184,37 @@ def test_families_are_named_with_grouping_disabled() -> None:
     genes = [named(0, "sitA"), named(1, "sitB")]
     families = group_families(genes, [hit(genes[0], genes[1])], FamilyGrouping(None))
     assert names(families) == ["sitA", "sitB"]
+
+
+@pytest.mark.parametrize(
+    "product",
+    [
+        "hypothetical protein",
+        "Hypothetical protein",
+        "conserved hypothetical protein",
+        "putative uncharacterized protein",
+        "uncharacterised protein",
+        "HYPOTHETICAL  PROTEIN",
+        "protein",
+    ],
+)
+def test_uninformative_products_do_not_name_a_family(product: str) -> None:
+    (family,) = group_families([named(0, None, product)], [], FamilyGrouping())
+    assert family.name is None
+
+
+@pytest.mark.parametrize(
+    "product", ["hypothetical protein YfaZ", "type VI secretion system protein"]
+)
+def test_products_with_any_other_word_still_name_a_family(product: str) -> None:
+    (family,) = group_families([named(0, None, product)], [], FamilyGrouping())
+    assert family.name == product
+
+
+def test_an_informative_member_product_names_a_mostly_hypothetical_family() -> None:
+    genes = [named(0, None, "hypothetical protein"), named(1, None, "IS1 transposase")]
+    (family,) = group_families(genes, [hit(genes[0], genes[1])], FamilyGrouping())
+    assert family.name == "IS1 transposase"
+    tagged = [named(0, "insB", "hypothetical protein"), named(1, None, "IS1 transposase")]
+    (family,) = group_families(tagged, [hit(tagged[0], tagged[1])], FamilyGrouping())
+    assert family.name == "insB"

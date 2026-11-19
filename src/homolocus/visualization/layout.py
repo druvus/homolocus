@@ -5,7 +5,7 @@ reuses hue 1. Every coloured gene carries its family ID as a label, so colour
 is never the only cue. Coordinates are 1-based inclusive.
 """
 
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, replace
 from typing import Literal
 
@@ -90,10 +90,25 @@ def family_labels(families: ReferenceFamilies) -> dict[str, str]:
     return {family.id: family_label(family.id, family.name) for family in families}
 
 
+def arrow_labels(families: ReferenceFamilies, genes: Iterable[Gene]) -> dict[str, str]:
+    """Family ID to its arrow label: the members' ``/gene`` names, else the ID (spec 11).
+
+    Names are unique, in genomic order, joined with ``/``. Products never label arrows.
+    """
+    by_id = {gene.id: gene for gene in genes}
+    labels = {}
+    for family in families:
+        names = (by_id[member].gene_name for member in family.gene_ids)
+        unique = list(dict.fromkeys(name for name in names if name))
+        labels[family.id] = "/".join(unique) or family.id
+    return labels
+
+
 def reference_track(results: RegionResults, *, missing: Collection[str] = ()) -> Track:
     """The reference region, coloured by family; ``missing`` families in mid grey."""
     reference = results.reference
-    colours, labels = family_colours(results.families), family_labels(results.families)
+    colours = family_colours(results.families)
+    labels = arrow_labels(results.families, results.reference.genes)
     glyphs = []
     for gene in reference.genes:
         if gene.protein_sequence is None:
@@ -114,7 +129,8 @@ def candidate_track(results: RegionResults, rank: int, *, detail: bool = False) 
     """A candidate's display interval; matched genes coloured by their best family."""
     cluster = results.candidates[rank - 1]
     best_family = _best_families(results, cluster)
-    colours, labels = family_colours(results.families), family_labels(results.families)
+    colours = family_colours(results.families)
+    labels = arrow_labels(results.families, results.reference.genes)
     best_copies = {family.best_copy_id for family in cluster.represented_families}
     glyphs = []
     for gene in cluster.genes:
@@ -132,7 +148,6 @@ def candidate_track(results: RegionResults, rank: int, *, detail: bool = False) 
         start=start,
         end=end,
         glyphs=tuple(glyphs),
-        note=_missing_note(cluster),
         reversed=cluster.reversed,
     )
 
@@ -227,8 +242,3 @@ def _candidate_title(results: RegionResults, rank: int, cluster: Cluster) -> str
     flags = candidate_flags(cluster)
     marks = [flags] if flags else []
     return " · ".join([*parts, *marks, *(["reversed"] if cluster.reversed else [])])
-
-
-def _missing_note(cluster: Cluster) -> str:
-    missing = [family_label(f.family_id, f.family_name) for f in cluster.missing_families]
-    return f"missing: {', '.join(missing)}" if missing else ""

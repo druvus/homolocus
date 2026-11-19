@@ -47,6 +47,7 @@ SUMMARY_COLUMNS = (
     "n_target_genes",
     "n_matched_genes",
     "n_missing_families",
+    "missing_families",
     "flags",
 )
 GENE_COLUMNS = (
@@ -275,6 +276,7 @@ def _summary_row(rank: int, cluster: Cluster) -> Row:
         "n_target_genes": len(cluster.evidence_genes),
         "n_matched_genes": len(cluster.event_ids),
         "n_missing_families": len(cluster.missing_families),
+        "missing_families": ";".join(f.family_id for f in cluster.missing_families),
         "flags": candidate_flags(cluster),
     }
 

@@ -132,7 +132,7 @@ Each candidate (`results.candidates`, ranked best first) keeps its evidence:
 
 ## How it works
 
-1. **Families.** Reference proteins are searched against each other, and close paralogs are grouped into families `F001`, `F002`, … (at least 90 % identity and 0.8 coverage by default). A family counts once in coverage and scoring. A family is named from its genes' `/gene` qualifiers in the reference GenBank, or their `/product` when none has a `/gene` (paralogs with different names are joined: `tnpA/tnpB`).
+1. **Families.** Reference proteins are searched against each other, and close paralogs are grouped into families `F001`, `F002`, … (at least 90 % identity and 0.8 coverage by default). A family counts once in coverage and scoring. A family is named from its genes' `/gene` qualifiers in the reference GenBank, or their `/product` when none has a `/gene` (paralogs with different names are joined: `tnpA/tnpB`). Products such as "hypothetical protein" or "conserved hypothetical protein" don't name a family.
 2. **Search.** Reference proteins are searched against target proteins with DIAMOND. Every hit and every HSP is kept, then aggregated per gene pair (union-based coverage, never double counted).
 3. **Matching events.** A target gene is an event when it has a match that passes the E-value and identity thresholds and covers at least half of either protein. That admits both split fragments and fused proteins.
 4. **Candidates.** On each contig, nearby events are chained (limited by intervening genes and the base-pair gap). Chains longer than `--max-region-bp` are split into windows. A candidate needs at least `--min-matches` represented families and `--min-reference-coverage`.
@@ -175,14 +175,14 @@ results/
     - `direction`: `forward`, or `reversed` when the candidate runs opposite to the reference;
     - the score and its five components;
     - `reference_coverage` and `mean_protein_coverage`;
-    - gene, match and missing-family counts;
+    - gene, match and missing-family counts, and `missing_families` (the missing family IDs, joined with `;`);
     - `flags`.
 - **Candidate TSVs:** one row per gene and match (one empty-match row for a gene without matches).
     - The `role` is `matched` or `additional`.
     - `family_name` is the family's name from the reference annotation, empty when it has none.
     - `is_best_copy` marks the copy used for scoring.
     - Gene `flags` are `partial`, `split_fragment` and `fused`.
-- **Plots:** every candidate reads in the reference direction. A reversed candidate keeps its real coordinates on a descending axis, with `reversed` in its title and axis label. Families keep one colour and their label across all plots: `F001 sitA` for a named family, `F001` otherwise, with names over 24 characters shortened. Unrelated and missing genes are grey, and the best copy of each family is outlined.
+- **Plots:** every candidate reads in the reference direction. A reversed candidate keeps its real coordinates on a descending axis, with `reversed` in its title and axis label. Families keep one colour across all plots. Each gene arrow is labelled with its family's `/gene` name, or the family ID when there is none (`anmK`, `F002`), and neighbouring labels alternate between two rows. The legend maps every family to its colour and name (`F001 anmK`, names over 24 characters shortened) and wraps to fit. Unrelated genes are grey, and the best copy of each family is outlined. Missing families aren't noted on the plots; `summary.tsv` lists them.
 - **Several genomes:** `results/<genome>/` holds the layout above for each genome. `results/summary.tsv` lists every candidate of every genome with a leading `genome` column. `results/plots/regions.png` shows the reference and every genome's candidates, titled by genome, and notes genomes without candidates. A single genome keeps the layout above.
 - **Deterministic:** the same input and settings give byte-identical files, with no timestamps. Writing again into a directory replaces the files homolocus manages, removes stale candidate files, and leaves other files alone.
 
