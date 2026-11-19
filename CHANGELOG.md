@@ -12,9 +12,12 @@ All notable changes to homolocus are recorded here. The format follows [Keep a C
   - families and the self-search are computed once, and each genome's results equal a run on it alone;
   - output has a folder per genome, a combined `summary.tsv` with a `genome` column, and a combined overview plot.
 - Candidates are called `forward` or `reversed` relative to the reference (gene order, then strand). The call is in `Cluster.reversed` and a new `direction` column of `summary.tsv`. Plots draw every candidate in the reference direction: a reversed one sits on a descending axis, marked `reversed`.
+- `summary.tsv` gains `missing_families`, listing each candidate's missing family IDs.
 
 ### Changed
 
+- Plots label gene arrows by `/gene` name, else family ID, on two alternating rows. The legend wraps to fit the figure, and missing families are no longer noted on plot lines.
+- Products such as "hypothetical protein" no longer name a family.
 - Genomes read from files are named after the file (`Genome.name`), so `analysis.json` now records `target.name` instead of `null`.
 
 ## [0.1.0] - Unreleased
