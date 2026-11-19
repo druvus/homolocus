@@ -40,13 +40,22 @@ def group_families(
     return ReferenceFamilies(tuple(families))
 
 
+FILLER_WORDS = frozenset(
+    {"hypothetical", "uncharacterized", "uncharacterised", "conserved", "putative", "protein"}
+)
+"""Words that alone make a /product uninformative as a family name (spec 7.6)."""
+
+
 def family_name(members: Sequence[Gene]) -> str | None:
     """Name of a family from its members' annotation (spec 7.6).
 
     The ``/gene`` names, unique and in member order, joined with ``/``; when no
-    member has one, the ``/product`` descriptions the same way; else None.
+    member has one, the informative ``/product`` descriptions the same way;
+    else None. A product made only of filler words ("hypothetical protein")
+    is not informative.
     """
-    for values in ([m.gene_name for m in members], [m.product for m in members]):
+    products = [m.product for m in members if m.product and _informative(m.product)]
+    for values in ([m.gene_name for m in members], products):
         unique = list(dict.fromkeys(value for value in values if value))
         if unique:
             return "/".join(unique)
@@ -71,3 +80,7 @@ def _find(parent: dict[str, str], gene_id: str) -> str:
 
 def _union(parent: dict[str, str], first: str, second: str) -> None:
     parent[_find(parent, second)] = _find(parent, first)
+
+
+def _informative(product: str) -> bool:
+    return bool(set(product.lower().split()) - FILLER_WORDS)
