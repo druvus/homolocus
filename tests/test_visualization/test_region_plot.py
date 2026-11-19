@@ -8,7 +8,7 @@ from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon, Rectangle
 
-from homolocus import Gene, GeneFamily, ReferenceFamilies, ReferenceRegion
+from homolocus import DiamondSearch, Gene, GeneFamily, ReferenceFamilies, ReferenceRegion
 from homolocus.visualization.layout import GeneGlyph, detail_tracks, overview_tracks
 from homolocus.visualization.region_plot import (
     SURFACE,
@@ -19,6 +19,7 @@ from homolocus.visualization.region_plot import (
 )
 from sample_world import results
 
+KEY = ["identity 30%", "identity 65%", "identity 100%"]  # the opacity key, default threshold
 F003_LABEL = "F003 iron ABC transporter pe…"  # the sample F003 /product, cut at 24 characters
 
 
@@ -112,6 +113,7 @@ def test_overview_legend_lists_the_families() -> None:
         "F002",
         F003_LABEL,
         "F004",
+        *KEY,
     ]
 
 
@@ -121,6 +123,7 @@ def test_detail_legend_leaves_out_families_drawn_grey() -> None:
         "F001 sitA",
         "F002",
         F003_LABEL,
+        *KEY,
     ]
 
 
@@ -240,3 +243,28 @@ def test_legend_columns_are_bounded_by_the_entries_and_at_least_one() -> None:
     assert legend_columns(["a", "b"], 11) == 2
     assert legend_columns(["x" * 400], 2) == 1
     assert 1 < legend_columns(["F001 anmK"] * 20, 11) < 20
+
+
+def test_matched_arrows_fade_by_opacity_but_outlines_stay_solid() -> None:
+    found = results()
+    axis = candidate_figure(found, 1).axes[1]
+    _, track = detail_tracks(found, 1)
+    polygons = [p for p in axis.patches if isinstance(p, Polygon)]
+    for patch, item in zip(polygons, track.glyphs, strict=True):
+        assert patch.get_facecolor()[3] == pytest.approx(item.opacity)
+        assert patch.get_edgecolor()[3] == 1.0
+    assert {round(g.opacity, 3) for g in track.glyphs} == {0.857, 1.0}
+
+
+def test_the_opacity_key_spans_half_to_full_and_needs_matched_genes() -> None:
+    legend = overview_figure(results()).legends[0]
+    swatches = legend.legend_handles[-3:]
+    assert [round(h.get_facecolor()[3], 3) for h in swatches] == [0.5, 0.75, 1.0]
+    strict = overview_figure(results(search=DiamondSearch(min_identity=50.0))).legends[0]
+    assert [t.get_text() for t in strict.get_texts()][-3:] == [
+        "identity 50%",
+        "identity 75%",
+        "identity 100%",
+    ]
+    reference_only = overview_figure(results(candidates=())).legends[0]
+    assert not [t for t in reference_only.get_texts() if "identity" in t.get_text()]

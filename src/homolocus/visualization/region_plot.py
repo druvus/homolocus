@@ -7,6 +7,7 @@ state and figures are never shown. Text uses ink colours, never series hues.
 from collections.abc import Sequence
 
 from matplotlib.axes import Axes
+from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Patch, Polygon
@@ -21,6 +22,7 @@ from homolocus.visualization.layout import (
     family_colours,
     family_labels,
     genome_set_tracks,
+    identity_opacity,
     overview_tracks,
 )
 
@@ -58,21 +60,24 @@ def arrow_polygon(glyph: GeneGlyph, *, axis_span: int) -> list[tuple[float, floa
 
 def overview_figure(results: RegionResults) -> Figure:
     """Reference line and one line per candidate (spec 11.1)."""
-    return _lines_figure(overview_tracks(results), results.families)
+    return _lines_figure(overview_tracks(results), results.families, results.search.min_identity)
 
 
 def genome_set_figure(results: GenomeSetResults) -> Figure:
     """Reference line, then every candidate of every genome (spec 11)."""
-    return _lines_figure(genome_set_tracks(results), results.families)
+    threshold = next(iter(results)).search.min_identity  # one finder, one search for all
+    return _lines_figure(genome_set_tracks(results), results.families, threshold)
 
 
-def _lines_figure(tracks: Sequence[Track], families: ReferenceFamilies) -> Figure:
+def _lines_figure(
+    tracks: Sequence[Track], families: ReferenceFamilies, min_identity: float
+) -> Figure:
     figure = Figure(figsize=(11, 1.3 * len(tracks) + 0.9), layout="constrained")
     figure.set_facecolor(SURFACE)
     axes = figure.subplots(len(tracks), 1, squeeze=False)[:, 0]
     for axis, track in zip(axes, tracks, strict=True):
         _draw_track(axis, track)
-    _family_legend(figure, families, tracks)
+    _family_legend(figure, families, tracks, min_identity)
     return figure
 
 
@@ -95,7 +100,7 @@ def candidate_figure(results: RegionResults, rank: int) -> Figure:
         x=0.01,
         ha="left",
     )
-    _family_legend(figure, results.families, tracks)
+    _family_legend(figure, results.families, tracks, results.search.min_identity)
     return figure
 
 
@@ -106,7 +111,7 @@ def _draw_track(axis: Axes, track: Track) -> None:
             Polygon(
                 arrow_polygon(glyph, axis_span=span),
                 closed=True,
-                facecolor=glyph.colour,
+                facecolor=to_rgba(glyph.colour, glyph.opacity),
                 edgecolor=TEXT_PRIMARY if glyph.outlined else SURFACE,
                 linewidth=1.8 if glyph.outlined else 0.6,
             )
@@ -181,7 +186,9 @@ def _recessive_axes(axis: Axes, label: str) -> None:
     axis.set_xlabel(label, fontsize=8, color=TEXT_SECONDARY)
 
 
-def _family_legend(figure: Figure, families: ReferenceFamilies, tracks: Sequence[Track]) -> None:
+def _family_legend(
+    figure: Figure, families: ReferenceFamilies, tracks: Sequence[Track], min_identity: float
+) -> None:
     shown = {g.family_id for track in tracks for g in track.glyphs if g.role != "missing"}
     colours, labels = family_colours(families), family_labels(families)
     handles = [
@@ -189,6 +196,8 @@ def _family_legend(figure: Figure, families: ReferenceFamilies, tracks: Sequence
         for family_id, colour in colours.items()
         if family_id in shown
     ]
+    if any(g.role == "matched" for track in tracks for g in track.glyphs):
+        handles += _opacity_key(min_identity)
     if handles:
         figure.legend(
             handles=handles,
@@ -198,6 +207,19 @@ def _family_legend(figure: Figure, families: ReferenceFamilies, tracks: Sequence
             fontsize=_LEGEND_FONT,
             labelcolor=TEXT_PRIMARY,
         )
+
+
+def _opacity_key(min_identity: float) -> list[Patch]:
+    """Three grey swatches: identity at the threshold, midway, and 100 % (spec 11)."""
+    identities = (min_identity, (min_identity + 100) / 2, 100.0)
+    return [
+        Patch(
+            facecolor=to_rgba(TEXT_SECONDARY, identity_opacity(identity, min_identity)),
+            edgecolor=SURFACE,
+            label=f"identity {identity:g}%",
+        )
+        for identity in identities
+    ]
 
 
 def legend_columns(labels: Sequence[str], width_inches: float) -> int:

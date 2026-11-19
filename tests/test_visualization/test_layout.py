@@ -2,7 +2,9 @@
 
 from dataclasses import replace
 
-from homolocus import Gene, GeneFamily, ReferenceFamilies
+import pytest
+
+from homolocus import DiamondSearch, Gene, GeneFamily, ReferenceFamilies
 from homolocus.models.cluster import SplitEvent
 from homolocus.visualization.layout import (
     MISSING_GREY,
@@ -13,6 +15,7 @@ from homolocus.visualization.layout import (
     detail_tracks,
     family_colours,
     family_label,
+    identity_opacity,
     overview_tracks,
     reference_track,
 )
@@ -208,3 +211,39 @@ def test_arrows_are_labelled_by_gene_name_else_family_id() -> None:
         )
     )
     assert arrow_labels(families, genes) == {"F001": "tnpA/tnpB", "F002": "F002", "F003": "F003"}
+
+
+@pytest.mark.parametrize(
+    ("identity", "threshold", "opacity"),
+    [(30, 30, 0.5), (100, 30, 1.0), (65, 30, 0.75), (10, 30, 0.5), (100, 100, 1.0), (75, 50, 0.75)],
+)
+def test_identity_maps_to_opacity_from_half_at_the_threshold_to_full(
+    identity: float, threshold: float, opacity: float
+) -> None:
+    assert identity_opacity(identity, threshold) == pytest.approx(opacity)
+
+
+def test_matched_genes_fade_by_the_identity_of_their_colour_match() -> None:
+    found = results()
+    by_id = {g.gene_id: g for g in candidate_track(found, 1).glyphs}
+    assert by_id[A.id].opacity == pytest.approx(0.5 + 0.5 * 50 / 70)  # 80 % identity
+    assert by_id[INSERT.id].opacity == 1.0
+    assert all(g.opacity == 1.0 for g in reference_track(found).glyphs)
+    assert all(g.opacity == 1.0 for g in detail_tracks(found, 1)[0].glyphs)
+
+
+def test_the_winning_family_match_sets_the_opacity() -> None:
+    from sample_world import MATCHES, match  # noqa: PLC0415
+
+    tie = match(REF_GENES[3], A, identity=40.0, bits=300.0)
+    glyph = {g.gene_id: g for g in candidate_track(results(matches=(tie, *MATCHES)), 1).glyphs}[
+        A.id
+    ]
+    assert glyph.family_id == "F001"
+    assert glyph.opacity == pytest.approx(0.5 + 0.5 * 50 / 70)
+
+
+def test_a_stricter_identity_threshold_changes_the_scale() -> None:
+    strict = results(search=DiamondSearch(min_identity=60.0))
+    glyph = {g.gene_id: g for g in candidate_track(strict, 1).glyphs}[A.id]
+    assert glyph.opacity == pytest.approx(0.5 + 0.5 * 20 / 40)

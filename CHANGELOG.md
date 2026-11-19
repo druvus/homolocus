@@ -13,6 +13,7 @@ All notable changes to homolocus are recorded here. The format follows [Keep a C
   - output has a folder per genome, a combined `summary.tsv` with a `genome` column, and a combined overview plot.
 - Candidates are called `forward` or `reversed` relative to the reference (gene order, then strand). The call is in `Cluster.reversed` and a new `direction` column of `summary.tsv`. Plots draw every candidate in the reference direction: a reversed one sits on a descending axis, marked `reversed`.
 - `summary.tsv` gains `missing_families`, listing each candidate's missing family IDs.
+- Plots fade each matched gene by the identity of its match: full opacity at 100 %, half at `--min-identity`. An identity key is in the legend.
 
 ### Changed
 

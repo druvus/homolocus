@@ -52,6 +52,7 @@ class GeneGlyph:
     role: GlyphRole
     outlined: bool = False
     family_id: str | None = None
+    opacity: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,14 @@ def family_label(family_id: str, name: str | None) -> str:
 def family_labels(families: ReferenceFamilies) -> dict[str, str]:
     """Family ID to plot label, in family order."""
     return {family.id: family_label(family.id, family.name) for family in families}
+
+
+def identity_opacity(identity: float, min_identity: float) -> float:
+    """Opacity of a matched gene: 0.5 at ``min_identity``, 1 at 100 % identity (spec 11)."""
+    if min_identity >= 100:
+        return 1.0
+    share = (identity - min_identity) / (100 - min_identity)
+    return 0.5 + 0.5 * min(max(share, 0.0), 1.0)
 
 
 def arrow_labels(families: ReferenceFamilies, genes: Iterable[Gene]) -> dict[str, str]:
@@ -129,16 +138,18 @@ def candidate_track(results: RegionResults, rank: int, *, detail: bool = False) 
     """A candidate's display interval; matched genes coloured by their best family."""
     cluster = results.candidates[rank - 1]
     best_family = _best_families(results, cluster)
+    threshold = results.search.min_identity
     colours = family_colours(results.families)
     labels = arrow_labels(results.families, results.reference.genes)
     best_copies = {family.best_copy_id for family in cluster.represented_families}
     glyphs = []
     for gene in cluster.genes:
         if gene.id in cluster.event_ids:
-            family_id = best_family[gene.id]
+            family_id, identity = best_family[gene.id]
             outlined = detail and gene.id in best_copies
             family = (family_id, labels[family_id])
-            glyphs.append(_glyph(gene, colours[family_id], "matched", family, outlined))
+            glyph = _glyph(gene, colours[family_id], "matched", family, outlined)
+            glyphs.append(replace(glyph, opacity=identity_opacity(identity, threshold)))
         else:
             glyphs.append(_glyph(gene, NEUTRAL_GREY, "additional"))
     start, end = to_one_based(cluster.display_start, cluster.display_end)
@@ -215,20 +226,20 @@ def _glyph(
     return GeneGlyph(gene.id, start, end, gene.strand, colour, label, role, outlined, family_id)
 
 
-def _best_families(results: RegionResults, cluster: Cluster) -> Mapping[str, str]:
-    """For each matched gene, the family of its best-bit-score passing match (spec 7.6).
+def _best_families(results: RegionResults, cluster: Cluster) -> Mapping[str, tuple[str, float]]:
+    """For each matched gene, the family and identity of its best-bit-score passing match.
 
-    Ties go to the family that comes first in reference order.
+    Ties go to the family that comes first in reference order (spec 7.6, 11).
     """
     search = results.search
     rank = {family.id: n for n, family in enumerate(results.families)}
-    by_gene: dict[str, list[tuple[float, int, str]]] = {}
+    by_gene: dict[str, list[tuple[float, int, str, float]]] = {}
     for match in cluster.matches:
         if match.passes(max_evalue=search.evalue, min_identity=search.min_identity):
             family_id = results.families.family_of(match.reference_gene_id).id
-            option = (match.bit_score, -rank[family_id], family_id)
+            option = (match.bit_score, -rank[family_id], family_id, match.identity)
             by_gene.setdefault(match.target_gene_id, []).append(option)
-    return {gene_id: max(options)[2] for gene_id, options in by_gene.items()}
+    return {gene_id: max(options)[2:] for gene_id, options in by_gene.items()}
 
 
 def _candidate_title(results: RegionResults, rank: int, cluster: Cluster) -> str:
