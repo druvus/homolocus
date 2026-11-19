@@ -16,7 +16,12 @@ from homolocus.models.gene_family import ReferenceFamilies
 from homolocus.models.gene_match import aggregate
 from homolocus.models.genome import Genome
 from homolocus.models.reference import ReferenceRegion
-from homolocus.results import GenomeSetResults, RegionResults, check_genome_names
+from homolocus.results import (
+    GenomeSetResults,
+    RegionResults,
+    check_genome_labels,
+    check_genome_names,
+)
 from homolocus.search.diamond import diamond_version, search
 from homolocus.search.protein_index import ProteinIndex
 
@@ -53,6 +58,7 @@ class RegionFinder:
         """
         targets = tuple(genomes)
         check_genome_names(genome.name for genome in targets)
+        check_genome_labels(genome.label for genome in targets)
         shared, early = _recorded(self._shared)
         runs = [_recorded(partial(self._run, genome, shared)) for genome in targets]
         return GenomeSetResults(

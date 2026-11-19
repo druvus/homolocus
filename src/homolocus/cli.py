@@ -104,7 +104,8 @@ def summary_lines(results: RegionResults | GenomeSetResults, output_dir: str) ->
     if isinstance(results, RegionResults):
         lines = _candidate_lines(results) or ["no candidates"]
     else:
-        lines = [line for name, found in results.items() for line in _genome_lines(name, found)]
+        labelled = results.labelled_items()
+        lines = [line for label, found in labelled for line in _genome_lines(label, found)]
     return [*lines, f"results written to {output_dir}"]
 
 

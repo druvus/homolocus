@@ -170,6 +170,7 @@ class GenomeSetResults:
         if len({r.families for r in self.results}) > 1:
             raise ValueError("every genome in a set must have the same reference families")
         check_genome_names(r.genome.name for r in self.results)
+        check_genome_labels(r.genome.label for r in self.results)
 
     @property
     def families(self) -> ReferenceFamilies:
@@ -186,6 +187,15 @@ class GenomeSetResults:
         """Genome names in input order."""
         return tuple(_name(r) for r in self.results)
 
+    def labelled_items(self) -> Iterator[tuple[str, RegionResults]]:
+        """Each genome's label with its results, in input order."""
+        return ((_label(r), r) for r in self.results)
+
+    @property
+    def labels(self) -> tuple[str, ...]:
+        """Genome labels (display name, else name) in input order (spec 5.3)."""
+        return tuple(_label(r) for r in self.results)
+
     def __iter__(self) -> Iterator[RegionResults]:
         return iter(self.results)
 
@@ -193,9 +203,9 @@ class GenomeSetResults:
         return len(self.results)
 
     def __getitem__(self, name: str) -> RegionResults:
-        """The results of the genome called ``name``. Raises KeyError otherwise."""
+        """The results of the genome with this name or label. Raises KeyError otherwise."""
         for results in self.results:
-            if results.genome.name == name:
+            if name in (results.genome.name, results.genome.label):
                 return results
         raise KeyError(name)
 
@@ -214,7 +224,7 @@ class GenomeSetResults:
     def to_dataframe(self) -> pd.DataFrame:
         """Every candidate of every genome, ``genome`` first (spec 12, 14)."""
         rows = [
-            {"genome": _name(results), **_summary_row(rank, cluster)}
+            {"genome": _label(results), **_summary_row(rank, cluster)}
             for results in self.results
             for rank, cluster in enumerate(results.candidates, 1)
         ]
@@ -235,8 +245,21 @@ def check_genome_names(names: Iterable[str | None]) -> None:
         seen.add(name)
 
 
+def check_genome_labels(labels: Iterable[str | None]) -> None:
+    """Reject genome labels shown twice, so every row and plot line is unambiguous."""
+    seen: set[str | None] = set()
+    for label in labels:
+        if label in seen:
+            raise ValueError(f"duplicate genome label {label!r}; display names must be unique")
+        seen.add(label)
+
+
 def _name(results: RegionResults) -> str:
     return results.genome.name or ""
+
+
+def _label(results: RegionResults) -> str:
+    return results.genome.label or ""
 
 
 _EMPTY_MATCH: Row = {

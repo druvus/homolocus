@@ -123,6 +123,7 @@ def analysis(results: RegionResults) -> dict[str, Any]:
         "target": {
             "source": genome.source,
             "name": genome.name,
+            "display_name": genome.display_name,
             "n_contigs": len(genome.contigs),
             "n_genes": sum(1 for _ in genome.genes()),
         },
