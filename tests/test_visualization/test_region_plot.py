@@ -98,8 +98,8 @@ def test_overview_has_one_axis_per_track_with_arrows_titles_and_notes() -> None:
         assert axis.get_xlim() == pytest.approx((track.start - pad, track.end + pad))
         assert all(track.start <= tick <= track.end for tick in axis.get_xticks())
     texts = [t.get_text() for t in figure.axes[1].texts]
-    assert "missing: F004" in texts
-    assert "F001 sitA" in texts
+    assert not [t for t in texts if t.startswith("missing")]
+    assert "sitA" in texts
 
 
 def test_overview_legend_lists_the_families() -> None:

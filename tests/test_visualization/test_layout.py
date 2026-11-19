@@ -8,6 +8,7 @@ from homolocus.visualization.layout import (
     MISSING_GREY,
     NEUTRAL_GREY,
     PALETTE,
+    arrow_labels,
     candidate_track,
     detail_tracks,
     family_colours,
@@ -16,8 +17,6 @@ from homolocus.visualization.layout import (
     reference_track,
 )
 from sample_world import FAMILIES, INSERT, REF_GENES, REFERENCE, A, B, C, results
-
-F003_LABEL = "F003 iron ABC transporter pe…"  # the sample F003 /product, cut at 24 characters
 
 BLUE, ORANGE, AQUA, YELLOW = PALETTE[:4]
 
@@ -54,12 +53,7 @@ def test_reference_track_shows_every_gene_one_based_and_coloured_by_family() -> 
         (3601, 4500, 1),
     ]
     assert [g.colour for g in track.glyphs] == [BLUE, ORANGE, AQUA, YELLOW]
-    assert [g.label for g in track.glyphs] == [
-        "F001 sitA",
-        "F002",
-        F003_LABEL,
-        "F004",
-    ]
+    assert [g.label for g in track.glyphs] == ["sitA", "F002", "F003", "F004"]
     assert [g.family_id for g in track.glyphs] == ["F001", "F002", "F003", "F004"]
     assert {g.role for g in track.glyphs} == {"reference"}
 
@@ -71,7 +65,8 @@ def test_paralogs_share_a_colour() -> None:
     )
     track = reference_track(results(families=paralogs, candidates=()))
     assert track.glyphs[0].colour == track.glyphs[2].colour == BLUE
-    assert track.glyphs[2].label == "F001"
+    assert track.glyphs[0].label == track.glyphs[2].label == "sitA"
+    assert track.glyphs[2].family_id == "F001"
 
 
 def test_reference_gene_without_protein_is_grey_and_unlabelled() -> None:
@@ -92,11 +87,11 @@ def test_candidate_track_colours_matched_genes_by_their_best_family() -> None:
     by_id = {g.gene_id: g for g in track.glyphs}
     assert (by_id[A.id].colour, by_id[A.id].label, by_id[A.id].role) == (
         BLUE,
-        "F001 sitA",
+        "sitA",
         "matched",
     )
     assert (by_id[B.id].colour, by_id[B.id].label) == (ORANGE, "F002")
-    assert (by_id[C.id].colour, by_id[C.id].label) == (AQUA, F003_LABEL)
+    assert (by_id[C.id].colour, by_id[C.id].label) == (AQUA, "F003")
 
 
 def test_additional_genes_are_grey_unlabelled_and_keep_their_strand() -> None:
@@ -105,7 +100,7 @@ def test_additional_genes_are_grey_unlabelled_and_keep_their_strand() -> None:
     assert (glyph.start, glyph.end, glyph.strand) == (12_401, 13_300, -1)
 
 
-def test_candidate_title_and_note_carry_score_coverage_flags_and_missing_families() -> None:
+def test_candidate_title_carries_score_coverage_and_flags_but_no_missing_note() -> None:
     found = results()
     cluster = found.candidates[0]
     track = candidate_track(found, 1)
@@ -113,7 +108,7 @@ def test_candidate_title_and_note_carry_score_coverage_flags_and_missing_familie
     assert "t1:10001-14500" in track.title
     assert f"score {cluster.score:.3f}" in track.title
     assert "coverage 0.75" in track.title
-    assert track.note == "missing: F004"
+    assert track.note == ""
     flagged = replace(
         cluster,
         touches_contig_edge=True,
@@ -123,12 +118,8 @@ def test_candidate_title_and_note_carry_score_coverage_flags_and_missing_familie
     assert title.endswith("split;edge")
 
 
-def test_candidate_without_missing_families_has_no_note() -> None:
-    found = results()
-    second = candidate_track(found, 2)
-    assert second.note == "missing: F003 iron ABC transporter pe…, F004"
-    complete = replace(found.candidates[0], families=found.candidates[0].represented_families)
-    assert candidate_track(replace(found, candidates=(complete,)), 1).note == ""
+def test_missing_families_are_not_noted_on_plot_lines() -> None:
+    assert all(track.note == "" for track in overview_tracks(results()))
 
 
 def test_overview_is_reference_then_each_candidate() -> None:
@@ -149,7 +140,7 @@ def test_detail_greys_missing_families_and_outlines_best_copies() -> None:
     assert (reference.glyphs[3].colour, reference.glyphs[3].label) == (MISSING_GREY, "F004")
     outlined = {g.gene_id for g in candidate.glyphs if g.outlined}
     assert outlined == {A.id, B.id, C.id}
-    assert candidate.note == "missing: F004"
+    assert candidate.note == ""
 
 
 def test_failing_matches_never_decide_a_colour() -> None:
@@ -194,3 +185,26 @@ def test_reversed_candidates_are_marked_on_their_track() -> None:
     assert "reversed" not in forward.title
     detail_reference, detail = detail_tracks(mixed_directions(), 2)
     assert (detail_reference.reversed, detail.reversed) == (False, True)
+
+
+def test_arrows_are_labelled_by_gene_name_else_family_id() -> None:
+    genes = [
+        Gene("ref", n * 1000, n * 1000 + 300, 1, "A" * 300, "M", gene_name=name, product=product)
+        for n, (name, product) in enumerate(
+            [
+                ("tnpA", None),
+                ("tnpB", "transposase"),
+                ("tnpA", None),
+                (None, "IS1 transposase"),
+                (None, None),
+            ]
+        )
+    ]
+    families = ReferenceFamilies(
+        (
+            GeneFamily("F001", (genes[0].id, genes[1].id, genes[2].id)),
+            GeneFamily("F002", (genes[3].id,), "IS1 transposase"),
+            GeneFamily("F003", (genes[4].id,)),
+        )
+    )
+    assert arrow_labels(families, genes) == {"F001": "tnpA/tnpB", "F002": "F002", "F003": "F003"}
