@@ -19,22 +19,32 @@ class Genome:
     """One assembly: every contig, in input order, keyed by contig ID.
 
     ``skipped_features`` lists CDS features excluded while parsing (spec 5.10).
+    ``display_name`` is an optional presentation name; ``label`` shows it, or
+    ``name`` without one (spec 5.3).
     """
 
     contigs: Mapping[str, Contig]
     name: str | None = None
     source: str | None = None
     skipped_features: tuple[SkippedFeature, ...] = ()
+    display_name: str | None = None
     _genes_by_id: Mapping[str, Gene] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not self.contigs:
             raise ValueError("a genome needs at least one contig")
+        if self.display_name == "":
+            raise ValueError("a genome's display name must not be empty; use None")
         for key, contig in self.contigs.items():
             if key != contig.id:
                 raise ValueError(f"contig key {key!r} does not match contig ID {contig.id!r}")
         object.__setattr__(self, "contigs", MappingProxyType(dict(self.contigs)))
         object.__setattr__(self, "_genes_by_id", {gene.id: gene for gene in self.genes()})
+
+    @property
+    def label(self) -> str | None:
+        """The name to show: the display name when set, else the name."""
+        return self.display_name or self.name
 
     def genes(self) -> Iterator[Gene]:
         """Iterate over all genes, contig by contig, each in start order."""
