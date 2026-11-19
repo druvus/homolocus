@@ -8,7 +8,9 @@ from collections.abc import Sequence
 
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Patch, Polygon
+from matplotlib.textpath import TextToPath
 
 from homolocus.models.gene_family import ReferenceFamilies
 from homolocus.results import GenomeSetResults, RegionResults
@@ -32,6 +34,11 @@ _ARROW_HEIGHT = 0.6
 _HEAD_SHARE_OF_GENE = 0.3
 _HEAD_SHARE_OF_AXIS = 0.015
 _PAD_SHARE_OF_AXIS = 0.01
+_LABEL_ROWS = (0.42, 0.98)
+_TOP = 1.6
+_LEGEND_FONT = 8
+_LEGEND_EXTRA_EMS = 2.0 + 0.8 + 2.4  # handle, handle-to-text pad, column spacing and margin
+POINTS_PER_INCH = 72
 
 
 def arrow_polygon(glyph: GeneGlyph, *, axis_span: int) -> list[tuple[float, float]]:
@@ -104,16 +111,12 @@ def _draw_track(axis: Axes, track: Track) -> None:
                 linewidth=1.8 if glyph.outlined else 0.6,
             )
         )
-        if glyph.label:
-            middle = (glyph.start + glyph.end) / 2
-            axis.text(
-                middle, 0.48, glyph.label, ha="center", va="bottom", fontsize=7, color=TEXT_PRIMARY
-            )
     pad = _PAD_SHARE_OF_AXIS * span
     low, high = track.start - pad, track.end + pad
     axis.set_xlim((high, low) if track.reversed else (low, high))
     axis.set_xticks([t for t in axis.get_xticks() if track.start <= t <= track.end])
-    axis.set_ylim(-0.9, 1.0)
+    _draw_labels(axis, track)
+    axis.set_ylim(-0.9, _TOP)
     axis.set_title(track.title, loc="left", fontsize=9, color=TEXT_PRIMARY)
     if track.note:
         axis.text(
@@ -128,6 +131,24 @@ def _draw_track(axis: Axes, track: Track) -> None:
         )
     direction = ", reversed" if track.reversed else ""
     _recessive_axes(axis, f"{track.contig_id} position (1-based{direction})")
+
+
+def _draw_labels(axis: Axes, track: Track) -> None:
+    """Gene labels above the arrows, alternating between two rows in drawn order."""
+    labels = sorted(
+        ((g.start, (g.start + g.end) / 2, g.label) for g in track.glyphs if g.label is not None),
+        reverse=track.reversed,
+    )
+    for number, (_, middle, label) in enumerate(labels):
+        axis.text(
+            middle,
+            _LABEL_ROWS[number % 2],
+            label,
+            ha="center",
+            va="bottom",
+            fontsize=7,
+            color=TEXT_PRIMARY,
+        )
 
 
 def _draw_components(axis: Axes, values: Sequence[float]) -> None:
@@ -172,8 +193,18 @@ def _family_legend(figure: Figure, families: ReferenceFamilies, tracks: Sequence
         figure.legend(
             handles=handles,
             loc="outside lower center",
-            ncols=min(len(handles), 10),
+            ncols=legend_columns([str(h.get_label()) for h in handles], figure.get_figwidth()),
             frameon=False,
-            fontsize=8,
+            fontsize=_LEGEND_FONT,
             labelcolor=TEXT_PRIMARY,
         )
+
+
+def legend_columns(labels: Sequence[str], width_inches: float) -> int:
+    """How many legend columns of these labels fit across the figure (spec 11)."""
+    font = FontProperties(size=_LEGEND_FONT)
+    measure = TextToPath().get_text_width_height_descent
+    widest = max(measure(label, font, ismath=False)[0] for label in labels)
+    entry = widest + _LEGEND_EXTRA_EMS * _LEGEND_FONT
+    fitting = int(width_inches * POINTS_PER_INCH // entry)
+    return max(1, min(len(labels), fitting))
