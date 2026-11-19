@@ -51,6 +51,7 @@ def test_summary_has_one_row_per_candidate_with_one_based_coordinates() -> None:
         "n_target_genes",
         "n_matched_genes",
         "n_missing_families",
+        "missing_families",
         "flags",
     ]
     first = frame.iloc[0]
@@ -68,6 +69,18 @@ def test_summary_has_one_row_per_candidate_with_one_based_coordinates() -> None:
     assert first["order"] == best.components.order
     assert first["flags"] == ""
     assert first["direction"] == "forward"
+    assert list(frame["missing_families"]) == ["F004", "F003;F004"]
+
+
+def test_summary_tsv_lists_missing_families_and_blank_without_any(tmp_path) -> None:
+    found = results()
+    found.write(tmp_path)
+    lines = (tmp_path / "summary.tsv").read_text().splitlines()
+    column = lines[0].split("\t").index("missing_families")
+    assert [line.split("\t")[column] for line in lines[1:]] == ["F004", "F003;F004"]
+    complete = replace(found.candidates[0], families=found.candidates[0].represented_families)
+    frame = replace(found, candidates=(complete,)).to_dataframe()
+    assert list(frame["missing_families"]) == [""]
 
 
 def test_summary_says_which_candidates_run_opposite_to_the_reference(tmp_path) -> None:
