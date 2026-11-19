@@ -188,11 +188,12 @@ def genome_set_tracks(results: GenomeSetResults) -> tuple[Track, ...]:
     title starts with its genome; genomes without candidates are named in a
     note on the reference line.
     """
-    empty = [name for name, found in results.items() if not found.candidates]
+    genomes = list(results.labelled_items())
+    empty = [label for label, found in genomes if not found.candidates]
     reference = replace(reference_track(next(iter(results))), note=_no_candidates_note(empty))
     candidates = (
         replace(track, title=f"{name} · {track.title}")
-        for name, found in results.items()
+        for name, found in genomes
         for track in overview_tracks(found)[1:]
         if found.candidates
     )

@@ -209,3 +209,52 @@ def test_writing_a_genome_set_twice_gives_identical_bytes(tmp_path) -> None:
     three_genomes().write(tmp_path / "x")
     three_genomes().write(tmp_path / "y")
     assert files(tmp_path / "x") == first == files(tmp_path / "y")
+
+
+def labelled(name: str, label: str, **overrides):
+    found = named(name, **overrides)
+    return replace(found, genome=replace(found.genome, display_name=label))
+
+
+def labelled_set() -> GenomeSetResults:
+    return GenomeSetResults(
+        (
+            labelled("sample_112", "E. coli CFT073"),
+            labelled("sample_007", "E. coli O157:H7", candidates=()),
+            named("sample_031"),
+        )
+    )
+
+
+def test_labels_are_shown_while_names_stay_the_keys(tmp_path) -> None:
+    found = labelled_set()
+    assert found.names == ("sample_112", "sample_007", "sample_031")
+    assert found.labels == ("E. coli CFT073", "E. coli O157:H7", "sample_031")
+    assert found["E. coli CFT073"] is found["sample_112"]
+    assert list(dict.fromkeys(found.to_dataframe()["genome"])) == ["E. coli CFT073", "sample_031"]
+    tracks = genome_set_tracks(found)
+    assert tracks[0].note == "no candidates: E. coli O157:H7"
+    assert tracks[1].title.startswith("E. coli CFT073 · #1 candidate_001")
+    found.write(tmp_path)
+    assert sorted(p.name for p in tmp_path.iterdir() if p.is_dir()) == [
+        "plots",
+        "sample_007",
+        "sample_031",
+        "sample_112",
+    ]
+    rows = (tmp_path / "summary.tsv").read_text().splitlines()[1:]
+    assert rows[0].startswith("E. coli CFT073\t1\t")
+
+
+def test_labels_must_be_unique_in_a_set() -> None:
+    with pytest.raises(ValueError, match="duplicate genome label 'E. coli'"):
+        GenomeSetResults((labelled("a", "E. coli"), labelled("b", "E. coli")))
+    with pytest.raises(ValueError, match="duplicate genome label 'b'"):
+        GenomeSetResults((labelled("a", "b"), named("b")))
+
+
+def test_find_all_checks_labels_before_any_search(searches) -> None:
+    twins = [replace(GENOME, name=n, display_name="E. coli") for n in ("a", "b")]
+    with pytest.raises(ValueError, match="duplicate genome label 'E. coli'"):
+        RegionFinder(REFERENCE).find_all(twins)
+    assert searches == []

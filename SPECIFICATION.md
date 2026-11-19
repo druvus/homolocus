@@ -283,6 +283,7 @@ class Genome:
 Preserve all contigs. Provide convenient access to genes across contigs. No assembly QC statistics.
 
 - **[PROPOSED]** `Genome.from_file` sets `name` to the file name without its extension. Within one run, genome names must be unique and usable as a directory name (not empty, no `/`, not starting with `.`).
+- **[PROPOSED]** `Genome.display_name` is an optional presentation name (never empty). `Genome.label` is the display name when set, else `name`. Labels are what plots, the combined summary, stdout and `analysis.json` show; `name` stays the key for output folders and lookups. Display names, when given, must be unique within a run.
 
 ### 5.4 ReferenceRegion
 
@@ -750,6 +751,7 @@ Matplotlib only in v0.1.
 - **[PROPOSED]** Missing families are not drawn as a note on plot lines; they are reported in `summary.tsv` (`missing_families`, 14) and the API. On the candidate plot they remain visible as grey reference genes.
 - **[PROPOSED]** A matched target gene's opacity shows how conserved it is: `0.5 + 0.5 × (identity − min_identity) / (100 − min_identity)`, clamped to [0.5, 1] (1 when `min_identity` is 100), where identity is that of the passing match deciding its colour and `min_identity` is the search's pair-level threshold (6.2). The scale is fixed, so the same identity looks the same in every plot. Reference genes, grey genes and best-copy outlines stay fully opaque. When a plot draws matched target genes, its legend ends with an opacity key of three grey swatches labelled `identity 30%`, `identity 65%` and `identity 100%` (`min_identity`, the midpoint and 100).
 - **[PROPOSED]** With several target genomes, a combined overview shows the reference line, then every candidate of every genome: genomes in input order, candidates in rank order within each. Each candidate title starts with its genome name (`a · #1 candidate_001 · …`). Genomes without candidates are listed in a note on the reference line (`no candidates: c`). Family colours, labels and the legend are shared, since every genome uses the same reference.
+- **[PROPOSED]** Titles and the no-candidates note of the combined overview use genome labels, and its lines follow the genome order (12), so a `--names` file sets it.
 - **[PROPOSED]** Every line has its own 1-based x-axis over its interval: the reference region, or a candidate's display interval (10).
 
 ### 11.2 Individual candidate plot
@@ -793,6 +795,7 @@ The API exposes intermediate models (alignments, matches, families, candidates, 
 
 - **[DECIDED]** `results.to_dataframe()` has one row per candidate (the `summary.tsv` columns); `results.genes_dataframe()` has the gene-level rows (the candidate TSV columns plus `candidate_id`).
 - **[PROPOSED]** `finder.find_all(genomes)` returns `GenomeSetResults`: the `RegionResults` of each genome in input order, iterable and indexable by genome name. Its `to_dataframe()` holds every candidate of every genome with a leading `genome` column, `plot()` returns the combined overview (11), and `write(output_dir)` writes the multi-genome layout (14). Like `find`, it has no file side effects.
+- **[PROPOSED]** `read_genome_names(path)` reads a mapping file (13) into file name → presentation name, in file order. `apply_genome_names(genomes, names)` orders genomes by it, listed genomes first in file order and the others after in input order, sets their `display_name`, and warns about each line that matches no genome. A genome matches a line by its source file name, ignoring the path. `GenomeSetResults` keeps input order, so a run follows the mapping.
 - **[DECIDED]** `finder.find(genome)` has no file side effects: DIAMOND runs in a temporary directory and the raw tables and token mapping are kept in the results. `results.write(output_dir)` writes every output file of section 14, the raw DIAMOND tables byte for byte.
 - **[PROPOSED]** `RegionFinder(reference, search=DiamondSearch(), family_grouping=FamilyGrouping(), detection=RegionDetection(), scoring=ScoringWeights())`. `results.best_candidate` is `None` when nothing passes.
 
@@ -816,6 +819,7 @@ homolocus find --reference ecoli_pai.gbk --genome target.gbk --output results/
 
 - **[PROPOSED]** Options are generated from the configuration dataclasses: one flag per field of `DiamondSearch`, `FamilyGrouping` and `RegionDetection`, named after the field (`min_identity` → `--min-identity`), and one per `ScoringWeights` field prefixed `--weight-` (`--weight-order`). `--no-family-grouping` disables grouping (`family_min_identity=None`) and `--annotation {auto,pyrodigal}` selects target annotation. Unset flags keep the dataclass defaults, which `--help` shows. `--start` and `--end` are given together or not at all.
 - **[PROPOSED]** `--genome` takes one or more paths (`--genome a.fna b.fna`, or repeated). All genomes are read before any search, so an unreadable one exits with 1 and no output. With several genomes each stdout candidate line starts with its genome name, and a genome without candidates prints `<genome>: no candidates`.
+- **[PROPOSED]** `--names FILE` gives genomes presentation names and an order. The file has one genome per line: the genome's file name (path ignored), a tab, and its presentation name; blank lines and lines starting with `#` are ignored and there is no header. Genomes follow the file's order, unlisted ones after it in command-line order. A line that matches no `--genome` file is a warning. A malformed line, or a file name or presentation name listed twice, is an input error (exit 1). Stdout lines use labels.
 - **[PROPOSED]** Exit codes: 0 on success; 2 for a usage error or an invalid setting; 1 when input cannot be read or is invalid, or DIAMOND is missing or fails. Errors are one line on stderr without a traceback.
 - **[PROPOSED]** After writing, `find` prints one line per candidate to stdout (rank, candidate ID, `contig:start-end` 1-based, score, reference coverage, flags), or `no candidates`, then the output directory. Warnings still go to stderr through the `warnings` module.
 
@@ -855,6 +859,7 @@ results/
   - `analysis.json` is sorted, indented JSON with `homolocus_version`, `tool_versions` (DIAMOND, Pyrodigal, Biopython), `parameters`, `reference`, `target`, `families`, `reference_genes_without_protein`, `skipped_features`, `untranslatable_genes` (coordinates 1-based) and `warnings`.
   - Managed files are `summary.tsv`, `candidates/candidate_*.tsv`, `plots/regions.png`, `plots/candidate_*.png`, `alignments/*` and `analysis.json`. Rewriting removes stale `candidate_*.tsv` and `candidate_*.png` files from an earlier run and leaves other files alone.
 - **[PROPOSED]** With several target genomes, `results/<genome>/` holds the layout above for each genome, `results/summary.tsv` lists every candidate of every genome with a leading `genome` column (genomes in input order, then rank), and `results/plots/regions.png` is the combined overview (11). A single genome keeps the flat layout above. Subdirectories of genomes from an earlier run are left alone.
+- **[PROPOSED]** The combined summary's `genome` column holds each genome's label; folders are named after `name`. `analysis.json`'s `target` gains `display_name` (`null` when none).
   - With family grouping disabled the self-search is not run and `alignments/reference_self.tsv` is empty.
 
 ────────
@@ -910,6 +915,7 @@ homolocus/
 │   ├── cli.py
 │   ├── finder.py
 │   ├── results.py                 # RegionResults, summary and gene rows, data frames
+│   ├── genome_names.py            # presentation names and order from a mapping file (13)
 │   ├── output.py                  # writes the output directory (14), I/O layer
 │   ├── config.py                  # DiamondSearch, RegionDetection, FamilyGrouping, ScoringWeights
 │   ├── coordinates.py             # 0-based half-open <-> 1-based inclusive
@@ -1027,6 +1033,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 28. Candidate direction (order runs, then strands), `Cluster.reversed`, the `direction` summary column, and reversed candidates drawn on a descending axis, 5.8, 8, 11, 14.
 29. Uninformative products do not name families; arrows labelled by `/gene` name else family ID, staggered in two rows; a wrapping legend; missing families reported in `summary.tsv` instead of on plots, 7.6, 11, 14.
 30. Matched-gene opacity from the identity of its colour match on a fixed scale (50 % at `min_identity`, 100 % at 100 % identity) with an opacity key, 11.
+31. Genome presentation names and order from a `--names` mapping file (file name, tab, name; path ignored), shown as labels while folders keep `name`; unmatched lines warn, malformed or duplicated ones exit 1, 5.3, 11, 12, 13, 14, 16.
 
 **Still open:**
 

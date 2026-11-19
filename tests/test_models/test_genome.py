@@ -88,3 +88,15 @@ def test_from_file_reads_a_genome(tmp_path) -> None:
     assert list(genome.contigs) == ["c1"]
     assert genome.source == str(path)
     assert Genome.from_file(str(path), annotation="pyrodigal") == genome
+
+
+def test_label_is_the_display_name_else_the_name() -> None:
+    plain = Genome(contigs={"c1": contig("c1")}, name="sample_031")
+    assert (plain.display_name, plain.label) == (None, "sample_031")
+    shown = Genome(contigs={"c1": contig("c1")}, name="sample_031", display_name="E. coli K-12")
+    assert shown.label == "E. coli K-12"
+
+
+def test_display_name_must_not_be_empty() -> None:
+    with pytest.raises(ValueError, match="display name must not be empty"):
+        Genome(contigs={"c1": contig("c1")}, name="sample_031", display_name="")

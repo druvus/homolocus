@@ -282,7 +282,9 @@ def find_all_calls(monkeypatch):
 
     def sample_for(genome):
         """The sample results under this genome's name; strain_b finds nothing."""
-        named = replace(SAMPLE_GENOME, name=genome.name)
+        named = replace(
+            SAMPLE_GENOME, name=genome.name, display_name=genome.display_name, source=genome.source
+        )
         if genome.name == "strain_b":
             return sample_results(genome=named, candidates=())
         return sample_results(genome=named)
@@ -353,3 +355,67 @@ def test_find_end_to_end_with_two_fasta_targets(tmp_path, dna, make_record, caps
     assert [row.split("\t")[0] for row in summary[1:]] == ["a"]
     assert (output / "a" / "plots" / "candidate_001.png").is_file()
     assert (output / "plots" / "regions.png").is_file()
+
+
+def with_names(argv, tmp_path, text: str):
+    names = tmp_path / "names.tsv"
+    names.write_text(text, encoding="utf-8")
+    return [*argv, "--names", str(names)]
+
+
+def test_names_file_sets_order_and_presentation_names(
+    two_targets, find_all_calls, tmp_path, capsys
+) -> None:
+    text = "# order for the figure\nstrain_b.gbk\tE. coli O157:H7\ntarget.gbk\tE. coli K-12\n"
+    assert main(with_names(two_targets, tmp_path, text)) == 0
+    ((first, second),) = find_all_calls
+    assert [(g.name, g.label) for g in (first, second)] == [
+        ("strain_b", "E. coli O157:H7"),
+        ("target", "E. coli K-12"),
+    ]
+    output = Path(two_targets[-1])
+    assert capsys.readouterr().out.splitlines() == [
+        "E. coli O157:H7: no candidates",
+        "E. coli K-12  #1 candidate_001  t1:10001-14500  score 0.827  coverage 0.75",
+        "E. coli K-12  #2 candidate_002  t1:100001-102100  score 0.740  coverage 0.50",
+        f"results written to {output}",
+    ]
+    assert (output / "target" / "summary.tsv").is_file()
+    assert (output / "summary.tsv").read_text().splitlines()[1].startswith("E. coli K-12\t1\t")
+
+
+def test_unlisted_genomes_follow_and_unmatched_lines_warn(
+    two_targets, find_all_calls, tmp_path
+) -> None:
+    text = "missing.gbk\tE. coli CFT073\nstrain_b.gbk\tE. coli O157:H7\n"
+    with pytest.warns(UserWarning, match="names file lists missing.gbk, which is not a --genome"):
+        assert main(with_names(two_targets, tmp_path, text)) == 0
+    ((first, second),) = find_all_calls
+    assert [g.label for g in (first, second)] == ["E. coli O157:H7", "target"]
+
+
+def test_a_malformed_names_file_fails_before_any_search(
+    two_targets, find_all_calls, tmp_path, capsys
+) -> None:
+    argv = with_names(two_targets, tmp_path, "target.gbk E. coli K-12\n")
+    assert main(argv) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("homolocus: error: names file line 1: expected a file name")
+    assert len(err.splitlines()) == 1
+    assert find_all_calls == []
+
+
+@pytest.mark.diamond
+def test_names_order_a_real_two_genome_run(tmp_path, dna, make_record, capsys) -> None:
+    orfs = [dna.orf(150) for _ in range(3)]
+    reference = genbank(tmp_path / "ref.gbk", "ref", dna, make_record, orfs)
+    first = fasta(tmp_path / "a.fna", "c1", dna, orfs)
+    second = fasta(tmp_path / "b.fna", "c1", dna, orfs)
+    argv = ["find", "--reference", str(reference), "--genome", str(first), str(second)]
+    argv = with_names(
+        [*argv, "--output", str(tmp_path / "out")], tmp_path, "b.fna\tSecond\na.fna\tFirst\n"
+    )
+    assert main([*argv, "--threads", "1"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith("Second  #1 candidate_001")
+    assert lines[1].startswith("First  #1 candidate_001")

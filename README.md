@@ -60,6 +60,29 @@ homolocus find --reference ecoli_pai.gbk --genome strain_a.fna strain_b.gbk --ou
 
 The reference families and its self-search are computed once. Each genome is then searched on its own, so its results are the same as a run with that genome alone. Genomes are named after their files (`strain_a`, `strain_b`), and names must be unique. Each candidate line starts with its genome, and a genome without candidates prints `strain_b: no candidates`.
 
+### Naming and ordering genomes
+
+To show readable names and choose the order of the genomes, give `--names` a tab-separated file. Each line has a genome's file name, a tab, and the name to show. Blank lines and lines starting with `#` are ignored:
+
+```text
+# file	name
+sample_031.gbk	E. coli K-12 MG1655
+sample_007.gbk	E. coli O157:H7 Sakai
+sample_112.gbk	E. coli CFT073
+```
+
+```bash
+homolocus find --reference ecoli_pai.gbk --genome sample_007.gbk sample_031.gbk sample_112.gbk \
+    --names names.tsv --output results/
+```
+
+- **Matching:** files are matched by name, so `data/sample_031.gbk` matches `sample_031.gbk`.
+- **Order and names:** genomes are searched and reported in the file's order, and the names appear in the terminal summary, the combined `summary.tsv`, the plots and `analysis.json`. Genomes not in the file keep their file names and come after the listed ones.
+- **Folders:** output folders still use the file names (`results/sample_031/`), so names may contain spaces or `/`.
+- **Mismatches:** a line that matches no `--genome` is a warning. A malformed line, or a file or name listed twice, stops the run with exit code 1.
+
+In Python, `from homolocus.genome_names import apply_genome_names, read_genome_names`, then pass `apply_genome_names(genomes, read_genome_names("names.tsv"))` to `find_all`.
+
 Run `homolocus find --help` to see every option and its default. The exit code is:
 
 - 0 on success, including when nothing is found;

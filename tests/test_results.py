@@ -327,6 +327,13 @@ def test_no_candidates_still_writes_headers(tmp_path) -> None:
     assert [p.name for p in (tmp_path / "plots").iterdir()] == ["regions.png"]
 
 
+def test_analysis_records_the_genome_display_name(tmp_path) -> None:
+    shown = replace(GENOME, display_name="E. coli K-12 MG1655")
+    results(genome=shown).write(tmp_path)
+    data = json.loads((tmp_path / "analysis.json").read_text())
+    assert data["target"]["display_name"] == "E. coli K-12 MG1655"
+
+
 def analysis(tmp_path, **overrides) -> dict:
     results(**overrides).write(tmp_path)
     return json.loads((tmp_path / "analysis.json").read_text())
@@ -363,6 +370,7 @@ def test_analysis_records_versions_parameters_and_inputs(tmp_path) -> None:
     }
     assert data["target"] == {
         "name": "target",
+        "display_name": None,
         "source": "target.fna",
         "n_contigs": 1,
         "n_genes": 6,

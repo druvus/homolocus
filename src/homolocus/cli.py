@@ -16,6 +16,7 @@ from typing import Any, Literal, get_args, get_origin, get_type_hints
 from homolocus.config import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
 from homolocus.coordinates import to_one_based
 from homolocus.finder import RegionFinder
+from homolocus.genome_names import apply_genome_names, read_genome_names
 from homolocus.models.genome import Genome
 from homolocus.models.reference import ReferenceRegion
 from homolocus.results import GenomeSetResults, RegionResults, candidate_flags
@@ -104,7 +105,8 @@ def summary_lines(results: RegionResults | GenomeSetResults, output_dir: str) ->
     if isinstance(results, RegionResults):
         lines = _candidate_lines(results) or ["no candidates"]
     else:
-        lines = [line for name, found in results.items() for line in _genome_lines(name, found)]
+        labelled = results.labelled_items()
+        lines = [line for label, found in labelled for line in _genome_lines(label, found)]
     return [*lines, f"results written to {output_dir}"]
 
 
@@ -160,6 +162,8 @@ def _find(args: argparse.Namespace, settings: FinderSettings) -> RegionResults |
         args.reference, contig=args.contig, start=args.start, end=args.end
     )
     genomes = [Genome.from_file(path, annotation=args.annotation) for path in args.genome]
+    if args.names:
+        genomes = apply_genome_names(genomes, read_genome_names(args.names))
     finder = RegionFinder(
         reference,
         search=settings.search,
@@ -190,6 +194,10 @@ def _add_inputs(parser: argparse.ArgumentParser) -> None:
         choices=("auto", "pyrodigal"),
         default="auto",
         help="target genes: supplied CDS when present, or always Pyrodigal (default: auto)",
+    )
+    inputs.add_argument(
+        "--names",
+        help="TSV of genome file name, tab, presentation name; sets names and their order",
     )
     inputs.add_argument("--output", required=True, help="output directory")
 
