@@ -186,7 +186,7 @@ results/
 │   ├── candidate_001.tsv     # genes and matches of each candidate
 │   └── ...
 ├── plots/
-│   ├── regions.png           # reference and every candidate, one line each
+│   ├── regions.png           # reference and the best candidates, one line each
 │   ├── candidate_001.png     # one candidate with its score components
 │   └── ...
 ├── alignments/
@@ -211,7 +211,8 @@ results/
     - `is_best_copy` marks the copy used for scoring.
     - Gene `flags` are `partial`, `split_fragment` and `fused`.
 - **Plots:** every candidate reads in the reference direction. A reversed candidate keeps its real coordinates on a descending axis, with `reversed` in its title and axis label. Families keep one colour across all plots. Each gene arrow is labelled with its family's `/gene` name, or the family ID when there is none (`anmK`, `F002`), and neighbouring labels alternate between two rows. The legend maps every family to its colour and name (`F001 anmK`, names over 24 characters shortened) and wraps to fit. A matched gene's opacity shows how conserved it is: solid at 100 % identity, fading to half opacity at the search's `--min-identity`, with a small key in the legend; exact identities are in the candidate TSVs. Unrelated genes are grey, and the best copy of each family is outlined. Missing families aren't noted on the plots; `summary.tsv` lists them.
-- **Several genomes:** `results/<genome>/` holds the layout above for each genome. `results/summary.tsv` lists every candidate of every genome with a leading `genome` column. `results/plots/regions.png` shows the reference and every genome's candidates, titled by genome, and notes genomes without candidates. A single genome keeps the layout above.
+- **Overview size:** `regions.png` draws the best three candidates of each genome (`--plot-candidates`, 0 for all), and the reference line notes how many more are in `summary.tsv`. An overview of more than 30 lines (`--plot-lines-per-page`) continues in `regions_002.png`, `regions_003.png`, …, each page starting with the reference line. Tables and candidate plots always cover every candidate. `--no-plots` writes tables and `analysis.json` only, which is faster for many genomes.
+- **Several genomes:** `results/<genome>/` holds the layout above for each genome. `results/summary.tsv` lists every candidate of every genome with a leading `genome` column. `results/plots/regions.png` shows the reference and the best candidates of every genome, titled by genome, and notes genomes without candidates. A single genome keeps the layout above.
 - **Deterministic:** the same input and settings give byte-identical files, with no timestamps. Writing again into a directory replaces the files homolocus manages, removes stale candidate files, and leaves other files alone.
 
 ## Options
@@ -269,7 +270,14 @@ Weights are normalised to sum to 1.
 | `--weight-orientation` | `0.1` | relative strands |
 | `--weight-spacing` | `0.05` | candidate span versus reference span |
 
-Other options are `--annotation auto|pyrodigal` and, for the reference, `--contig`, `--start` and `--end`.
+### Plots
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--plot-candidates` | `3` | candidates drawn per genome in the overview; 0 draws all |
+| `--plot-lines-per-page` | `30` | most lines per overview page, reference line included |
+
+`--no-plots` skips the plots. Other options are `--annotation auto|pyrodigal` and, for the reference, `--contig`, `--start` and `--end`.
 
 ## Limitations in v0.1
 

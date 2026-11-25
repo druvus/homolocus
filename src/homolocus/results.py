@@ -11,7 +11,14 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
-from homolocus.config import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
+from homolocus.config import (
+    DEFAULT_PLOTS,
+    DiamondSearch,
+    FamilyGrouping,
+    PlotOptions,
+    RegionDetection,
+    ScoringWeights,
+)
 from homolocus.coordinates import strand_char, to_one_based
 from homolocus.models.cluster import Cluster, FamilyEvidence
 from homolocus.models.gene import Gene
@@ -144,17 +151,23 @@ class RegionResults:
                 rows.append({**base, **_match_columns(match, family)})
         return rows
 
-    def write(self, output_dir: str | Path) -> None:
-        """Write every output file of spec 14 to ``output_dir``."""
+    def write(self, output_dir: str | Path, plots: PlotOptions | None = DEFAULT_PLOTS) -> None:
+        """Write every output file of spec 14 to ``output_dir``; ``plots=None`` skips plots."""
         from homolocus.output import write_results  # noqa: PLC0415
 
-        write_results(self, output_dir)
+        write_results(self, output_dir, plots)
 
-    def plot(self) -> "Figure":
-        """Overview figure: reference line and one line per candidate (spec 11.1)."""
+    def plot(self, options: PlotOptions = DEFAULT_PLOTS) -> "Figure":
+        """First page of the overview: reference line and drawn candidates (spec 11.1)."""
         from homolocus.visualization.region_plot import overview_figure  # noqa: PLC0415
 
-        return overview_figure(self)
+        return overview_figure(self, options)
+
+    def plot_pages(self, options: PlotOptions = DEFAULT_PLOTS) -> tuple["Figure", ...]:
+        """Every page of the overview (spec 11.1, 11.4)."""
+        from homolocus.visualization.region_plot import overview_pages  # noqa: PLC0415
+
+        return overview_pages(self, options)
 
     def plot_candidate(self, rank: int) -> "Figure":
         """Detailed figure for the candidate at a 1-based rank (spec 11.2)."""
@@ -225,17 +238,26 @@ class GenomeSetResults:
             return by_name[name]
         return {results.genome.label: results for results in self.results}[name]
 
-    def write(self, output_dir: str | Path) -> None:
-        """Write one directory per genome plus a combined summary and plot (spec 14)."""
+    def write(self, output_dir: str | Path, plots: PlotOptions | None = DEFAULT_PLOTS) -> None:
+        """Write one directory per genome plus a combined summary and plot (spec 14).
+
+        ``plots=None`` writes no plots and removes those of an earlier run.
+        """
         from homolocus.output import write_genome_set  # noqa: PLC0415
 
-        write_genome_set(self, output_dir)
+        write_genome_set(self, output_dir, plots)
 
-    def plot(self) -> "Figure":
-        """Combined overview: the reference, then every genome's candidates (spec 11)."""
+    def plot(self, options: PlotOptions = DEFAULT_PLOTS) -> "Figure":
+        """First page of the combined overview of every genome (spec 11)."""
         from homolocus.visualization.region_plot import genome_set_figure  # noqa: PLC0415
 
-        return genome_set_figure(self)
+        return genome_set_figure(self, options)
+
+    def plot_pages(self, options: PlotOptions = DEFAULT_PLOTS) -> tuple["Figure", ...]:
+        """Every page of the combined overview (spec 11, 11.4)."""
+        from homolocus.visualization.region_plot import genome_set_pages  # noqa: PLC0415
+
+        return genome_set_pages(self, options)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Every candidate of every genome, ``genome`` first (spec 12, 14)."""

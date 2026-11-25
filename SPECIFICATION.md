@@ -760,6 +760,8 @@ Matplotlib only in v0.1.
 - **[PROPOSED]** With several target genomes, a combined overview shows the reference line, then every candidate of every genome: genomes in input order, candidates in rank order within each. Each candidate title starts with its genome name (`a · #1 candidate_001 · …`). Genomes without candidates are listed in a note on the reference line (`no candidates: c`). Family colours, labels and the legend are shared, since every genome uses the same reference.
 - **[PROPOSED]** Titles and the no-candidates note of the combined overview use genome labels, and its lines follow the genome order (12), so a `--names` file sets it.
 - **[PROPOSED]** Every line has its own 1-based x-axis over its interval: the reference region, or a candidate's display interval (10).
+- **[PROPOSED]** The overview draws at most `PlotOptions.candidates` lines per genome (default 3; 0 draws all), the best-ranked ones. The reference line's note says what was left out: `2 more candidates in summary.tsv` for one genome, `more candidates in summary.tsv: a +2, b +1` in the combined overview. Tables and candidate plots always cover every candidate.
+- **[PROPOSED]** An overview longer than `PlotOptions.lines_per_page` lines (default 30, at least 2) is split into pages. Each page starts with the reference line and carries the shared legend; with more than one page, the reference note ends with `page i/n`.
 
 ### 11.2 Individual candidate plot
 
@@ -776,6 +778,8 @@ Plotting consumes `Cluster` and result models. It never reruns searches or detec
 
 - `results.plot()` returns the overview and `results.plot_candidate(rank)` a candidate plot, each as a `matplotlib.figure.Figure` that is not shown.
 - `results.write()` adds `plots/regions.png` and `plots/candidate_NNN.png` (PNG, 150 dpi, no Software metadata, so files stay byte-identical). Stale `candidate_*.png` files are removed like the candidate TSVs. With no candidates, `regions.png` shows the reference line and the note "no candidates".
+- **[PROPOSED]** `PlotOptions(candidates: int = 3, lines_per_page: int = 30)`, a frozen dataclass in `config.py`, is validated at construction. `write(output_dir, plots=PlotOptions())` takes it, and `plots=None` writes no plots. Page 1 is `plots/regions.png`, later pages `plots/regions_002.png`, `plots/regions_003.png`, …; stale `regions_*.png` are removed like stale candidate files. `plot()` returns page 1 and `plot_pages()` every page, for `RegionResults` and `GenomeSetResults`.
+- **[PROPOSED]** With `plots=None`, plot files an earlier run wrote (`regions.png`, `regions_*.png`, `candidate_*.png`) are removed, so the directory matches the run (14), and no `plots/` directory is created.
 
 ────────
 
@@ -832,6 +836,7 @@ homolocus find --reference ecoli_pai.gbk --genome target.gbk --output results/
 - **[PROPOSED]** The package reports progress through the `logging` logger `homolocus` and never adds handlers itself, so API users see it only when they configure logging (`logging.basicConfig(level=logging.INFO)`). `INFO` reports the reference (its genes, and its families after the self-search), each genome read, `searching genome i/n: <label>` followed by `<label>: k candidates`, and the output directory written. `DEBUG` adds each DIAMOND command line.
 - **[PROPOSED]** `find` prints progress to stderr as `homolocus: <message>`, at `INFO` by default. `-q/--quiet` shows only warnings and errors; `-v/--verbose` adds `DEBUG`. Warnings still go through the `warnings` module, and stdout is unchanged.
 - **[PROPOSED]** `homolocus --version` prints `homolocus <version> (DIAMOND <version>)`, or `(DIAMOND not found)` when no `diamond` is on `PATH`, and exits 0.
+- **[PROPOSED]** A `plots` option group is generated from `PlotOptions`, prefixed `--plot-` (`--plot-candidates`, `--plot-lines-per-page`). `--no-plots` writes tables and `analysis.json` only.
 
 ────────
 
@@ -866,8 +871,8 @@ results/
   - The candidate TSV has one row per gene and GeneMatch (genes in genomic order, then reference gene ID), and one row with empty match columns for a gene without matches.
   - Flag tokens are joined with `;` and empty when none: `split`, `fusion`, `partial`, `edge` in the summary; `partial`, `split_fragment`, `fused` on gene rows.
   - Floats are written with 6 significant digits.
-  - `analysis.json` is sorted, indented JSON with `homolocus_version`, `tool_versions` (DIAMOND, Pyrodigal, Biopython), `parameters`, `reference`, `target`, `families` (each with `id`, `name` and `gene_ids`), `reference_genes_without_protein`, `skipped_features`, `untranslatable_genes` (coordinates 1-based) and `warnings`. `warnings` lists the reference's parse warnings prefixed `reference: `, then the target's prefixed `target: `, then the warnings raised during the run, each group in the order raised.
-  - Managed files are `summary.tsv`, `candidates/candidate_*.tsv`, `plots/regions.png`, `plots/candidate_*.png`, `alignments/*` and `analysis.json`. Rewriting removes stale `candidate_*.tsv` and `candidate_*.png` files from an earlier run and leaves other files alone.
+  - `analysis.json` is sorted, indented JSON with `homolocus_version`, `tool_versions` (DIAMOND, Pyrodigal, Biopython), `parameters` (including `plots`: the `PlotOptions` values, or `null` without plots), `reference`, `target`, `families` (each with `id`, `name` and `gene_ids`), `reference_genes_without_protein`, `skipped_features`, `untranslatable_genes` (coordinates 1-based) and `warnings`. `warnings` lists the reference's parse warnings prefixed `reference: `, then the target's prefixed `target: `, then the warnings raised during the run, each group in the order raised.
+  - Managed files are `summary.tsv`, `candidates/candidate_*.tsv`, `plots/regions.png`, `plots/regions_*.png`, `plots/candidate_*.png`, `alignments/*` and `analysis.json`. Rewriting removes stale `candidate_*.tsv` and `candidate_*.png` files from an earlier run and leaves other files alone.
 - **[PROPOSED]** With several target genomes, `results/<genome>/` holds the layout above for each genome, `results/summary.tsv` lists every candidate of every genome with a leading `genome` column (genomes in input order, then rank), and `results/plots/regions.png` is the combined overview (11). A single genome keeps the flat layout above. Subdirectories of genomes from an earlier run are left alone.
 - **[PROPOSED]** The combined summary's `genome` column holds each genome's label; folders are named after `name`. `analysis.json`'s `target` gains `display_name` (`null` when none).
   - With family grouping disabled the self-search is not run and `alignments/reference_self.tsv` is empty.
@@ -1047,6 +1052,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 32. gzip-compressed reference and target files, detected from content, with `.gz` removed from genome names, 2.1, 2.2, 5.3, 12.
 33. Short model reprs without sequences or raw output; parse warnings kept on `Genome` and `ReferenceRegion` and written to `analysis.json` with `reference: `/`target: ` prefixes; family names in `analysis.json`, 5, 5.3, 5.4, 14.
 34. Progress through the `homolocus` logger with no handlers in the package; CLI progress on stderr at INFO with `-q`/`-v`; `--version` with the DIAMOND version; exit code 130 on interrupt, 13.
+35. Overview capped at `PlotOptions.candidates` per genome with a note naming what was left out; pages of at most `lines_per_page` lines (`regions.png`, `regions_002.png`, …); `plot_pages()`; `--no-plots`; `parameters.plots` in `analysis.json`, 11, 11.4, 13, 14.
 
 **Still open:**
 

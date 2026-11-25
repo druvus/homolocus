@@ -13,6 +13,7 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Patch, Polygon
 from matplotlib.textpath import TextToPath
 
+from homolocus.config import DEFAULT_PLOTS, PlotOptions
 from homolocus.models.gene_family import ReferenceFamilies
 from homolocus.results import GenomeSetResults, RegionResults
 from homolocus.visualization.layout import (
@@ -24,6 +25,7 @@ from homolocus.visualization.layout import (
     genome_set_tracks,
     identity_opacity,
     overview_tracks,
+    paginate,
 )
 
 TEXT_PRIMARY = "#0b0b0b"
@@ -58,15 +60,42 @@ def arrow_polygon(glyph: GeneGlyph, *, axis_span: int) -> list[tuple[float, floa
     return [(base, -half), (shoulder, -half), (tip, 0.0), (shoulder, half), (base, half)]
 
 
-def overview_figure(results: RegionResults) -> Figure:
-    """Reference line and one line per candidate (spec 11.1)."""
-    return _lines_figure(overview_tracks(results), results.families, results.search.min_identity)
+def overview_figure(results: RegionResults, options: PlotOptions = DEFAULT_PLOTS) -> Figure:
+    """First page of the overview: reference line and one line per drawn candidate (11.1)."""
+    return overview_pages(results, options, first_only=True)[0]
 
 
-def genome_set_figure(results: GenomeSetResults) -> Figure:
-    """Reference line, then every candidate of every genome (spec 11)."""
+def overview_pages(
+    results: RegionResults, options: PlotOptions = DEFAULT_PLOTS, *, first_only: bool = False
+) -> tuple[Figure, ...]:
+    """Every page of the overview, each starting with the reference line (spec 11.1)."""
+    tracks = overview_tracks(results, options.candidates)
+    pages = paginate(tracks, options.lines_per_page)
+    return _page_figures(pages, results.families, results.search.min_identity, first_only)
+
+
+def genome_set_figure(results: GenomeSetResults, options: PlotOptions = DEFAULT_PLOTS) -> Figure:
+    """First page of the combined overview of every genome (spec 11)."""
+    return genome_set_pages(results, options, first_only=True)[0]
+
+
+def genome_set_pages(
+    results: GenomeSetResults, options: PlotOptions = DEFAULT_PLOTS, *, first_only: bool = False
+) -> tuple[Figure, ...]:
+    """Every page of the combined overview, each starting with the reference line (11)."""
     threshold = next(iter(results)).search.min_identity  # one finder, one search for all
-    return _lines_figure(genome_set_tracks(results), results.families, threshold)
+    pages = paginate(genome_set_tracks(results, options.candidates), options.lines_per_page)
+    return _page_figures(pages, results.families, threshold, first_only)
+
+
+def _page_figures(
+    pages: Sequence[Sequence[Track]],
+    families: ReferenceFamilies,
+    min_identity: float,
+    first_only: bool,
+) -> tuple[Figure, ...]:
+    chosen = pages[:1] if first_only else pages
+    return tuple(_lines_figure(page, families, min_identity) for page in chosen)
 
 
 def _lines_figure(

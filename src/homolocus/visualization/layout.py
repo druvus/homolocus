@@ -5,7 +5,7 @@ reuses hue 1. Every coloured gene carries its family ID as a label, so colour
 is never the only cue. Coordinates are 1-based inclusive.
 """
 
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Literal
 
@@ -163,45 +163,85 @@ def candidate_track(results: RegionResults, rank: int, *, detail: bool = False) 
     )
 
 
-def overview_tracks(results: RegionResults) -> tuple[Track, ...]:
-    """The reference line followed by one line per candidate (spec 11.1)."""
+def overview_tracks(results: RegionResults, candidates: int = 0) -> tuple[Track, ...]:
+    """The reference line followed by one line per drawn candidate (spec 11.1).
+
+    At most ``candidates`` lines are drawn, best-ranked first (0 draws all);
+    the reference note says how many more are in summary.tsv.
+    """
     reference = reference_track(results)
     if not results.candidates:
-        return (
-            Track(
-                reference.title,
-                reference.contig_id,
-                reference.start,
-                reference.end,
-                reference.glyphs,
-                note="no candidates",
-            ),
-        )
-    candidates = (candidate_track(results, rank) for rank in range(1, len(results.candidates) + 1))
-    return (reference, *candidates)
+        return (replace(reference, note="no candidates"),)
+    drawn = _drawn(results, candidates)
+    hidden = len(results.candidates) - drawn
+    lines = (candidate_track(results, rank) for rank in range(1, drawn + 1))
+    return (replace(reference, note=_more_note(hidden)), *lines)
 
 
-def genome_set_tracks(results: GenomeSetResults) -> tuple[Track, ...]:
-    """The reference line, then every candidate of every genome (spec 11).
+def genome_set_tracks(results: GenomeSetResults, candidates: int = 0) -> tuple[Track, ...]:
+    """The reference line, then the drawn candidates of every genome (spec 11).
 
-    Genomes keep their input order and candidates their rank. Each candidate
-    title starts with its genome; genomes without candidates are named in a
-    note on the reference line.
+    Genomes keep their input order and candidates their rank, at most
+    ``candidates`` per genome (0 draws all). Each candidate title starts with
+    its genome; the reference note names genomes without candidates and
+    those with more candidates than drawn.
     """
     genomes = list(results.labelled_items())
     empty = [label for label, found in genomes if not found.candidates]
-    reference = replace(reference_track(next(iter(results))), note=_no_candidates_note(empty))
-    candidates = (
+    hidden = [
+        (label, len(found.candidates) - _drawn(found, candidates)) for label, found in genomes
+    ]
+    note = _joined(_no_candidates_note(empty), _hidden_note(hidden))
+    reference = replace(reference_track(next(iter(results))), note=note)
+    lines = (
         replace(track, title=f"{name} · {track.title}")
         for name, found in genomes
-        for track in overview_tracks(found)[1:]
+        for track in overview_tracks(found, candidates)[1:]
         if found.candidates
     )
-    return (reference, *candidates)
+    return (reference, *lines)
+
+
+def paginate(tracks: Sequence[Track], lines_per_page: int) -> tuple[tuple[Track, ...], ...]:
+    """Split overview tracks into pages of at most ``lines_per_page`` lines (spec 11.1).
+
+    Every page starts with the reference line (the first track); with more
+    than one page, its note ends with ``page i/n``.
+    """
+    reference, *lines = tracks
+    size = lines_per_page - 1
+    chunks = [lines[at : at + size] for at in range(0, len(lines), size)] or [[]]
+    if len(chunks) == 1:
+        return ((reference, *chunks[0]),)
+    return tuple(
+        (replace(reference, note=_joined(reference.note, f"page {number}/{len(chunks)}")), *chunk)
+        for number, chunk in enumerate(chunks, start=1)
+    )
+
+
+def _drawn(results: RegionResults, candidates: int) -> int:
+    total = len(results.candidates)
+    return total if candidates == 0 else min(total, candidates)
+
+
+def _more_note(hidden: int) -> str:
+    if not hidden:
+        return ""
+    noun = "candidate" if hidden == 1 else "candidates"
+    return f"{hidden} more {noun} in summary.tsv"
+
+
+def _hidden_note(hidden: list[tuple[str, int]]) -> str:
+    parts = [f"{label} +{count}" for label, count in hidden if count]
+    return f"more candidates in summary.tsv: {', '.join(parts)}" if parts else ""
 
 
 def _no_candidates_note(names: list[str]) -> str:
     return f"no candidates: {', '.join(names)}" if names else ""
+
+
+def _joined(*notes: str) -> str:
+    return " · ".join(note for note in notes if note)
 
 
 def detail_tracks(results: RegionResults, rank: int) -> tuple[Track, Track]:

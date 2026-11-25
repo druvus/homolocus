@@ -17,6 +17,7 @@ from homolocus.visualization.layout import (
     family_label,
     identity_opacity,
     overview_tracks,
+    paginate,
     reference_track,
 )
 from sample_world import FAMILIES, INSERT, REF_GENES, REFERENCE, A, B, C, results
@@ -247,3 +248,49 @@ def test_a_stricter_identity_threshold_changes_the_scale() -> None:
     strict = results(search=DiamondSearch(min_identity=60.0))
     glyph = {g.gene_id: g for g in candidate_track(strict, 1).glyphs}[A.id]
     assert glyph.opacity == pytest.approx(0.5 + 0.5 * 20 / 40)
+
+
+def many(n_candidates: int):
+    """The sample results with their two candidates repeated to ``n_candidates``."""
+    found = results()
+    return replace(found, candidates=(found.candidates * n_candidates)[:n_candidates])
+
+
+def test_overview_draws_the_best_candidates_and_notes_the_rest() -> None:
+    reference, *lines = overview_tracks(many(5), candidates=3)
+    assert [t.title.split(" · ")[0] for t in lines] == [
+        "#1 candidate_001",
+        "#2 candidate_002",
+        "#3 candidate_003",
+    ]
+    assert reference.note == "2 more candidates in summary.tsv"
+    assert overview_tracks(many(4), candidates=3)[0].note == "1 more candidate in summary.tsv"
+
+
+@pytest.mark.parametrize(("limit", "drawn"), [(0, 5), (5, 5), (9, 5)])
+def test_overview_draws_every_candidate_when_the_limit_allows(limit: int, drawn: int) -> None:
+    reference, *lines = overview_tracks(many(5), candidates=limit)
+    assert len(lines) == drawn
+    assert reference.note == ""
+
+
+def test_short_overviews_are_one_page() -> None:
+    tracks = overview_tracks(many(3))
+    assert paginate(tracks, lines_per_page=4) == (tracks,)
+
+
+def test_long_overviews_are_split_into_pages_that_start_with_the_reference() -> None:
+    reference, *lines = overview_tracks(many(5), candidates=3)
+    pages = paginate((reference, *lines), lines_per_page=3)
+    assert [len(page) for page in pages] == [3, 2]
+    assert [page[0].note for page in pages] == [
+        "2 more candidates in summary.tsv · page 1/2",
+        "2 more candidates in summary.tsv · page 2/2",
+    ]
+    assert [track for page in pages for track in page[1:]] == lines
+    assert all(page[0].title == reference.title for page in pages)
+
+
+def test_a_page_note_stands_alone_without_another_note() -> None:
+    pages = paginate(overview_tracks(many(2)), lines_per_page=2)
+    assert [page[0].note for page in pages] == ["page 1/2", "page 2/2"]

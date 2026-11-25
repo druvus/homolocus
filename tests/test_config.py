@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from homolocus import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
+from homolocus import DiamondSearch, FamilyGrouping, PlotOptions, RegionDetection, ScoringWeights
 
 
 def test_defaults_match_the_specification() -> None:
@@ -179,3 +179,24 @@ def test_negative_weights_are_rejected(field: str) -> None:
 def test_all_zero_weights_are_rejected() -> None:
     with pytest.raises(ValueError, match="at least one weight"):
         ScoringWeights(content=0, similarity=0, order=0, orientation=0, spacing=0)
+
+
+def test_plot_option_defaults() -> None:
+    assert PlotOptions() == PlotOptions(candidates=3, lines_per_page=30)
+
+
+@pytest.mark.parametrize(("candidates", "lines_per_page"), [(0, 2), (1, 2), (50, 500)])
+def test_plot_option_boundaries_are_allowed(candidates: int, lines_per_page: int) -> None:
+    PlotOptions(candidates=candidates, lines_per_page=lines_per_page)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"candidates": -1}, "candidates -1 must be 0 .all. or more"),
+        ({"lines_per_page": 1}, "lines_per_page 1 must be at least 2"),
+    ],
+)
+def test_invalid_plot_options_are_rejected(overrides: dict[str, Any], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        PlotOptions(**overrides)

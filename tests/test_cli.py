@@ -2,6 +2,7 @@
 
 import dataclasses
 import gzip
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -12,11 +13,12 @@ from homolocus import (
     DiamondSearch,
     FamilyGrouping,
     GenomeSetResults,
+    PlotOptions,
     RegionDetection,
     RegionFinder,
     ScoringWeights,
 )
-from homolocus.cli import FinderSettings, build_parser, finder_settings, main
+from homolocus.cli import FinderSettings, build_parser, finder_settings, main, plot_options
 from sample_world import GENOME as SAMPLE_GENOME
 from sample_world import results as sample_results
 
@@ -26,6 +28,7 @@ CONFIGS = (
     (FamilyGrouping, ""),
     (RegionDetection, ""),
     (ScoringWeights, "weight-"),
+    (PlotOptions, "plot-"),
 )
 
 
@@ -52,6 +55,7 @@ def test_every_config_field_has_a_documented_flag(capsys) -> None:
         for field in dataclasses.fields(config):
             assert f"--{prefix}{field.name.replace('_', '-')} " in text
     assert "--no-family-grouping" in text
+    assert "--no-plots" in text
 
 
 def test_help_shows_the_dataclass_defaults(capsys) -> None:
@@ -437,3 +441,37 @@ def test_an_interrupted_run_stops_with_one_line_and_exit_130(inputs, monkeypatch
     captured = capsys.readouterr()
     assert error_line(captured.err) == "homolocus: interrupted"
     assert captured.out == ""
+
+
+def plots_of(*options: str) -> PlotOptions | None:
+    return plot_options(build_parser().parse_args([*REQUIRED, *options]))
+
+
+def test_plot_flags_build_the_plot_options() -> None:
+    assert plots_of() == PlotOptions()
+    assert plots_of("--plot-candidates", "0", "--plot-lines-per-page", "10") == PlotOptions(0, 10)
+    assert plots_of("--no-plots") is None
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        (["--no-plots", "--plot-candidates", "1"], "--no-plots cannot be combined"),
+        (["--plot-lines-per-page", "1"], "lines_per_page 1 must be at least 2"),
+    ],
+)
+def test_conflicting_or_invalid_plot_flags_are_usage_errors(
+    inputs, capsys, options, message
+) -> None:
+    with pytest.raises(SystemExit) as stop:
+        main([*inputs, *options])
+    assert stop.value.code == 2
+    assert message in capsys.readouterr().err
+
+
+def test_no_plots_writes_tables_and_metadata_only(inputs, finder_calls) -> None:
+    assert main([*inputs, "--no-plots"]) == 0
+    output = Path(inputs[-1])
+    assert (output / "summary.tsv").is_file()
+    assert not (output / "plots").exists()
+    assert json.loads((output / "analysis.json").read_text())["parameters"]["plots"] is None

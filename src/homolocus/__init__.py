@@ -1,6 +1,12 @@
 """Find homologous genomic regions in bacterial genomes."""
 
-from homolocus.config import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
+from homolocus.config import (
+    DiamondSearch,
+    FamilyGrouping,
+    PlotOptions,
+    RegionDetection,
+    ScoringWeights,
+)
 from homolocus.finder import RegionFinder
 from homolocus.models.alignment import Alignment
 from homolocus.models.cluster import Cluster, FamilyEvidence, ScoreComponents
@@ -31,6 +37,7 @@ __all__ = [
     "RegionFinder",
     "RegionResults",
     "ScoreComponents",
+    "PlotOptions",
     "ScoringWeights",
     "SkipReason",
     "SkippedFeature",

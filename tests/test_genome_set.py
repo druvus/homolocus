@@ -255,3 +255,55 @@ def test_find_all_checks_labels_before_any_search(searches) -> None:
     with pytest.raises(ValueError, match="duplicate genome label 'E. coli'"):
         RegionFinder(REFERENCE).find_all(twins)
     assert searches == []
+
+
+def test_combined_overview_draws_the_best_candidates_of_each_genome() -> None:
+    def with_candidates(name: str, n: int):
+        found = named(name)
+        return replace(found, candidates=(found.candidates * n)[:n])
+
+    found = GenomeSetResults(
+        (with_candidates("a", 4), named("b", candidates=()), with_candidates("c", 1))
+    )
+    reference, *lines = genome_set_tracks(found, candidates=2)
+    assert [t.title.split(" · ")[:2] for t in lines] == [
+        ["a", "#1 candidate_001"],
+        ["a", "#2 candidate_002"],
+        ["c", "#1 candidate_001"],
+    ]
+    assert reference.note == "no candidates: b · more candidates in summary.tsv: a +2"
+
+
+def test_combined_overview_pages_are_written_next_to_the_genome_folders(tmp_path) -> None:
+    from homolocus import PlotOptions  # noqa: PLC0415
+
+    found = three_genomes()
+    found.write(tmp_path, plots=PlotOptions(candidates=0, lines_per_page=3))
+    assert sorted(p.name for p in (tmp_path / "plots").iterdir()) == [
+        "regions.png",
+        "regions_002.png",
+    ]
+    assert len(found.plot_pages(PlotOptions(candidates=0, lines_per_page=3))) == 2
+    assert (tmp_path / "a" / "plots" / "regions.png").is_file()
+    found.write(tmp_path, plots=None)
+    assert list((tmp_path / "plots").iterdir()) == []
+    assert list((tmp_path / "a" / "plots").iterdir()) == []
+
+
+def test_a_large_genome_set_gives_pages_that_fit_and_cover_every_drawn_candidate() -> None:
+    from homolocus import PlotOptions  # noqa: PLC0415
+    from homolocus.output import PLOT_DPI  # noqa: PLC0415
+
+    def five(name: str):
+        found = named(name)
+        return replace(found, candidates=(found.candidates * 5)[:5])
+
+    found = GenomeSetResults(tuple(five(f"g{n:02d}") for n in range(60)))
+    pages = found.plot_pages(PlotOptions())
+    titles = [
+        [a.get_title(loc="left") for a in page.axes if a.get_title(loc="left")] for page in pages
+    ]
+    assert all(len(page) <= 30 for page in titles)
+    assert all(page.get_figheight() * PLOT_DPI < 2**16 for page in pages)
+    drawn = [title.split(" · ")[:2] for page in titles for title in page[1:]]
+    assert drawn == [[f"g{n:02d}", f"#{r} candidate_00{r}"] for n in range(60) for r in (1, 2, 3)]
