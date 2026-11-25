@@ -59,3 +59,8 @@ def test_illegal_contigs_are_rejected(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         Contig(id=contig_id, sequence=sequence, genes=genes)
+
+
+def test_duplicate_gene_error_names_the_gene() -> None:
+    with pytest.raises(ValueError, match=r"contig c1 has duplicate gene IDs: c1\|1-30\|\+"):
+        Contig(id="c1", sequence=SEQUENCE, genes=(gene(0, 30), gene(30, 45), gene(0, 30)))

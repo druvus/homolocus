@@ -37,16 +37,30 @@ class DetectionContext:
     weights: ScoringWeights
 
     def __post_init__(self) -> None:
-        if self.detection.min_matches > len(self.families):
-            raise ValueError(
-                f"min_matches {self.detection.min_matches} exceeds the "
-                f"{len(self.families)} reference families"
-            )
+        check_min_matches(self.families, self.detection.min_matches)
         reference_ids = {gene.id for gene in self.reference.genes}
         for family in self.families:
             for gene_id in family.gene_ids:
                 if gene_id not in reference_ids:
                     raise ValueError(f"family member {gene_id} is not a gene of the reference")
+
+
+def check_min_matches(families: ReferenceFamilies, min_matches: int) -> None:
+    """Raise ValueError when no candidate could represent ``min_matches`` families (spec 7.5).
+
+    A reference without searchable genes has no families at all, which is
+    reported as such rather than as a min_matches problem.
+    """
+    if not len(families):
+        raise ValueError(
+            "the reference region has no searchable protein-coding genes; "
+            "check the region coordinates and its CDS annotation"
+        )
+    if min_matches > len(families):
+        raise ValueError(
+            f"min_matches {min_matches} exceeds the {len(families)} reference families; "
+            "lower it with --min-matches (RegionDetection.min_matches)"
+        )
 
 
 def detect(

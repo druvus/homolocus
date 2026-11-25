@@ -1,6 +1,7 @@
 """RegionFinder: the whole pipeline from reference and genome to results (spec 12)."""
 
 import warnings
+from dataclasses import replace
 
 import pytest
 
@@ -16,6 +17,8 @@ from homolocus import (
     RegionResults,
 )
 from homolocus.search.diamond import DiamondNotFoundError
+from sample_world import GENOME as SAMPLE_GENOME
+from sample_world import REFERENCE as SAMPLE_REFERENCE
 
 
 def build_world(proteins):
@@ -124,3 +127,24 @@ def test_warnings_during_a_run_are_kept_and_still_shown(proteins, monkeypatch) -
     with pytest.warns(UserWarning, match="something to note"):
         results = RegionFinder(reference).find(genome)
     assert results.warnings == ("something to note",)
+
+
+# Settings that cannot work fail before any genome is searched (spec 7.5)
+
+
+def test_min_matches_above_the_family_count_fails_before_any_genome_search(searches) -> None:
+    finder = RegionFinder(SAMPLE_REFERENCE, detection=RegionDetection(min_matches=5))
+    message = r"min_matches 5 exceeds the 4 reference families; lower it with --min-matches"
+    with pytest.raises(ValueError, match=message):
+        finder.find(SAMPLE_GENOME)
+    with pytest.raises(ValueError, match=message):
+        finder.find_all([SAMPLE_GENOME])
+    assert False not in searches
+
+
+def test_reference_without_searchable_genes_fails_before_any_genome_search(searches) -> None:
+    no_proteins = tuple(replace(gene, protein_sequence=None) for gene in SAMPLE_REFERENCE.genes)
+    finder = RegionFinder(replace(SAMPLE_REFERENCE, genes=no_proteins))
+    with pytest.raises(ValueError, match="reference region has no searchable protein-coding genes"):
+        finder.find(SAMPLE_GENOME)
+    assert False not in searches

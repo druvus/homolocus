@@ -30,6 +30,24 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         item.add_marker(pytest.mark.skip(reason=MISSING_DIAMOND))
 
 
+@pytest.fixture
+def searches(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
+    """Stand-in for DIAMOND in RegionFinder that records each search and finds nothing.
+
+    Each entry is True for a self-search and False for a main search.
+    """
+    calls: list[bool] = []
+
+    def fake_search(index, config, path, *, self_search=False):
+        path.write_text("")
+        calls.append(self_search)
+        return ()
+
+    monkeypatch.setattr("homolocus.finder.search", fake_search)
+    monkeypatch.setattr("homolocus.finder.diamond_version", lambda: "2.2.9")
+    return calls
+
+
 RecordFactory = Callable[[str, str, Sequence[SeqFeature]], SeqRecord]
 GenBankWriter = Callable[[Sequence[SeqRecord]], Path]
 

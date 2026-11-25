@@ -21,6 +21,10 @@ All notable changes to homolocus are recorded here. The format follows [Keep a C
 - Plots label gene arrows by `/gene` name, else family ID, on two alternating rows. The legend wraps to fit the figure, and missing families are no longer noted on plot lines.
 - Products such as "hypothetical protein" no longer name a family.
 - Genomes read from files are named after the file (`Genome.name`), so `analysis.json` now records `target.name` instead of `null`.
+- Settings that no candidate could meet now fail before any genome is searched: `min_matches` above the number of reference families, and a reference region without searchable protein-coding genes, which has its own message.
+- Clearer errors: a GenBank file saved without its sequence names the file and record and says how to fix it; duplicate gene IDs are listed; duplicate genome names say they come from the file names.
+- `GenomeSetResults[key]` looks up genome names before display names, so a display name can no longer hide another genome.
+- An interrupted `homolocus find` (Ctrl-C) prints `homolocus: interrupted` and exits with 130 instead of a traceback.
 
 ## [0.1.0] - Unreleased
 
