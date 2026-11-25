@@ -419,3 +419,14 @@ def test_names_order_a_real_two_genome_run(tmp_path, dna, make_record, capsys) -
     lines = capsys.readouterr().out.splitlines()
     assert lines[0].startswith("Second  #1 candidate_001")
     assert lines[1].startswith("First  #1 candidate_001")
+
+
+def test_an_interrupted_run_stops_with_one_line_and_exit_130(inputs, monkeypatch, capsys) -> None:
+    def interrupted(finder, genome):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(RegionFinder, "find", interrupted)
+    assert main(inputs) == 130
+    captured = capsys.readouterr()
+    assert captured.err == "homolocus: interrupted\n"
+    assert captured.out == ""

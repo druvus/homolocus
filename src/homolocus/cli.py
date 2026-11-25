@@ -62,6 +62,9 @@ _CONFIG_GROUPS: tuple[tuple[str, type, str], ...] = (
 )
 _DISABLE_FLAGS = {"family_min_identity": ("--no-family-grouping", "do not group paralogs")}
 
+EXIT_INTERRUPTED = 130
+"""Exit code after Ctrl-C, the shell convention for termination by SIGINT."""
+
 
 @dataclass(frozen=True)
 class FinderSettings:
@@ -77,7 +80,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run ``homolocus``; returns the exit code (spec 13).
 
     Usage errors and invalid settings exit with 2 through argparse. Input
-    and run failures print one line to stderr and return 1.
+    and run failures print one line to stderr and return 1. An interrupted
+    run (Ctrl-C) prints one line and returns 130.
     """
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -92,6 +96,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, ValueError, DiamondError) as error:
         sys.stderr.write(f"homolocus: error: {error}\n")
         return 1
+    except KeyboardInterrupt:
+        sys.stderr.write("homolocus: interrupted\n")
+        return EXIT_INTERRUPTED
     sys.stdout.write("".join(f"{line}\n" for line in summary_lines(results, args.output)))
     return 0
 
