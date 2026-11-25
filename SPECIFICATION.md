@@ -109,6 +109,7 @@ Rules:
 - CDS with compound locations are skipped with a warning and listed in the run metadata.
 - The reference sequence and gene coordinates retain the original contig orientation. The package does not reverse-complement or reorient the reference region.
 - Reference genes with `protein_sequence=None` stay in the model but cannot be searched. They are excluded from the reference-coverage denominator and reported separately (8.1).
+- **[PROPOSED]** The reference file may be gzip-compressed, as for target genomes (2.2).
 
 ### 2.2 Target genome input
 
@@ -130,12 +131,13 @@ genome = Genome.from_file("target.fna", annotation="auto")
 
 - GenBank input with at least one CDS feature: use the supplied annotation. Do not run Pyrodigal.
 - GenBank input with no CDS features, and all FASTA input: run Pyrodigal.
-- Pyrodigal mode: contigs shorter than 20 kb use meta mode. Training details for longer contigs (single genome training on the whole assembly vs. per contig) are **[PROPOSED]**: train once on the whole assembly when it totals at least 20 kb. Translation table 11.
+- Pyrodigal mode: contigs shorter than 20 kb use meta mode. Training details for longer contigs (single genome training on the whole assembly vs. per contig) are **[PROPOSED]**: when at least one contig is 20 kb or longer, train once on all contigs of the assembly. Translation table 11.
 - Partial genes at contig edges (Pyrodigal partial flags, or `<`/`>` in GenBank locations) are kept and flagged (`Gene.partial`).
 
 Input details:
 
 - **[DECIDED]** The file format is detected from the content, not the extension: a first non-empty line starting with `LOCUS` is GenBank, one starting with `>` is FASTA, anything else is an error.
+- **[PROPOSED]** Any input file may be gzip-compressed. Compression is detected from the content (the gzip magic bytes `1f 8b`), not the extension. The file is decompressed while it is read, and format detection then applies to the decompressed text. Other compression formats are not supported.
 - **[DECIDED]** `annotation` accepts `"auto"` (above) and `"pyrodigal"`, which always predicts genes and ignores any supplied CDS annotation.
 - **[PROPOSED]** Meta mode uses only Pyrodigal's translation-table-11 models, so table 11 holds in meta mode too.
 - **[PROPOSED]** Training happens only when at least one contig is 20 kb or longer; it then uses all contigs of the assembly. Contigs under 20 kb use meta mode either way.
@@ -282,7 +284,7 @@ class Genome:
 
 Preserve all contigs. Provide convenient access to genes across contigs. No assembly QC statistics.
 
-- **[PROPOSED]** `Genome.from_file` sets `name` to the file name without its extension. Within one run, genome names must be unique and usable as a directory name (not empty, no `/`, not starting with `.`).
+- **[PROPOSED]** `Genome.from_file` sets `name` to the file name without its extension. For a compressed file, a trailing `.gz` (any case) is removed first, so `strain.fna.gz` gives `strain`. Within one run, genome names must be unique and usable as a directory name (not empty, no `/`, not starting with `.`).
 - **[PROPOSED]** `Genome.display_name` is an optional presentation name (never empty). `Genome.label` is the display name when set, else `name`. Labels are what plots, the combined summary, stdout and `analysis.json` show; `name` stays the key for output folders and lookups. Display names, when given, must be unique within a run.
 
 ### 5.4 ReferenceRegion
@@ -795,7 +797,7 @@ The API exposes intermediate models (alignments, matches, families, candidates, 
 
 - **[DECIDED]** `results.to_dataframe()` has one row per candidate (the `summary.tsv` columns); `results.genes_dataframe()` has the gene-level rows (the candidate TSV columns plus `candidate_id`).
 - **[PROPOSED]** `finder.find_all(genomes)` returns `GenomeSetResults`: the `RegionResults` of each genome in input order, iterable and indexable by genome name. Its `to_dataframe()` holds every candidate of every genome with a leading `genome` column, `plot()` returns the combined overview (11), and `write(output_dir)` writes the multi-genome layout (14). Like `find`, it has no file side effects.
-- **[PROPOSED]** `read_genome_names(path)` reads a mapping file (13) into file name → presentation name, in file order. `apply_genome_names(genomes, names)` orders genomes by it, listed genomes first in file order and the others after in input order, sets their `display_name`, and warns about each line that matches no genome. A genome matches a line by its source file name, ignoring the path. `GenomeSetResults` keeps input order, so a run follows the mapping.
+- **[PROPOSED]** `read_genome_names(path)` reads a mapping file (13) into file name → presentation name, in file order. `apply_genome_names(genomes, names)` orders genomes by it, listed genomes first in file order and the others after in input order, sets their `display_name`, and warns about each line that matches no genome. A genome matches a line by its source file name, ignoring the path; a compressed genome is listed as named on disk (`strain.fna.gz`). `GenomeSetResults` keeps input order, so a run follows the mapping.
 - **[DECIDED]** `finder.find(genome)` has no file side effects: DIAMOND runs in a temporary directory and the raw tables and token mapping are kept in the results. `results.write(output_dir)` writes every output file of section 14, the raw DIAMOND tables byte for byte.
 - **[PROPOSED]** `RegionFinder(reference, search=DiamondSearch(), family_grouping=FamilyGrouping(), detection=RegionDetection(), scoring=ScoringWeights())`. `results.best_candidate` is `None` when nothing passes.
 
@@ -1034,6 +1036,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 29. Uninformative products do not name families; arrows labelled by `/gene` name else family ID, staggered in two rows; a wrapping legend; missing families reported in `summary.tsv` instead of on plots, 7.6, 11, 14.
 30. Matched-gene opacity from the identity of its colour match on a fixed scale (50 % at `min_identity`, 100 % at 100 % identity) with an opacity key, 11.
 31. Genome presentation names and order from a `--names` mapping file (file name, tab, name; path ignored), shown as labels while folders keep `name`; unmatched lines warn, malformed or duplicated ones exit 1, 5.3, 11, 12, 13, 14, 16.
+32. gzip-compressed reference and target files, detected from content, with `.gz` removed from genome names, 2.1, 2.2, 5.3, 12.
 
 **Still open:**
 
