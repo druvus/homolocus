@@ -6,7 +6,7 @@ All notable changes to homolocus are recorded here. The format follows [Keep a C
 
 ### Added
 
-- Families are named from the reference GenBank annotation: their genes' `/gene` qualifiers, else `/product`. Names appear in plot labels and legends (`F001 sitA`), in the missing-families note, in a new `family_name` column of the candidate TSVs, and on `GeneFamily.name` and `FamilyEvidence.family_name`.
+- Families are named from the reference GenBank annotation: their genes' `/gene` qualifiers, else `/product`. Names appear in plot labels and legends (`F001 sitA`), in `analysis.json` `families`, in a new `family_name` column of the candidate TSVs, and on `GeneFamily.name` and `FamilyEvidence.family_name`.
 - Several target genomes in one run:
   - `--genome` takes one or more files, and `RegionFinder.find_all()` returns `GenomeSetResults`;
   - families and the self-search are computed once, and each genome's results equal a run on it alone;
@@ -25,6 +25,7 @@ All notable changes to homolocus are recorded here. The format follows [Keep a C
 - Settings that no candidate could meet now fail before any genome is searched: `min_matches` above the number of reference families, and a reference region without searchable protein-coding genes, which has its own message.
 - Clearer errors: a GenBank file saved without its sequence names the file and record and says how to fix it; duplicate gene IDs are listed; duplicate genome names say they come from the file names.
 - `GenomeSetResults[key]` looks up genome names before display names, so a display name can no longer hide another genome.
+- `analysis.json` `warnings` now include the GenBank parse warnings of the reference and the target (prefixed `reference: ` and `target: `), before the warnings of the run. `Genome.parse_warnings` and `ReferenceRegion.parse_warnings` keep them in the API.
 - An interrupted `homolocus find` (Ctrl-C) prints `homolocus: interrupted` and exits with 130 instead of a traceback.
 
 ## [0.1.0] - Unreleased

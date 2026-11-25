@@ -127,7 +127,9 @@ def analysis(results: RegionResults) -> dict[str, Any]:
             "n_contigs": len(genome.contigs),
             "n_genes": sum(1 for _ in genome.genes()),
         },
-        "families": [{"id": f.id, "gene_ids": list(f.gene_ids)} for f in results.families],
+        "families": [
+            {"id": f.id, "name": f.name, "gene_ids": list(f.gene_ids)} for f in results.families
+        ],
         "reference_genes_without_protein": _without_protein(reference.genes),
         "untranslatable_genes": {
             "reference": _without_protein(reference.genes),
@@ -137,7 +139,11 @@ def analysis(results: RegionResults) -> dict[str, Any]:
             "reference": [_skipped(f) for f in reference.skipped_features],
             "target": [_skipped(f) for f in genome.skipped_features],
         },
-        "warnings": list(results.warnings),
+        "warnings": [
+            *(f"reference: {warning}" for warning in reference.parse_warnings),
+            *(f"target: {warning}" for warning in genome.parse_warnings),
+            *results.warnings,
+        ],
         "n_candidates": len(results.candidates),
     }
 

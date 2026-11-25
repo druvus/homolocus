@@ -315,3 +315,22 @@ def test_a_gzip_reference_gives_the_same_region_as_the_plain_file(
     expected = ReferenceRegion.from_genbank(plain, contig="c1", start=1, end=36)
     assert replace(region, source_genome=str(plain)) == expected
     assert len(region.genes) == 1
+
+
+def test_parse_warnings_are_kept_on_the_genome_and_the_reference(
+    write_genbank, make_record
+) -> None:
+    clean = make_record("c2", SEQUENCE, [cds(0, 12)])
+    path = write_genbank([make_record("c1", SEQUENCE, [cds(0, 12, pseudo="")]), clean])
+    with pytest.warns(AnnotationWarning, match="contig c1: pseudogene: 1"):
+        genome = read_genbank(path)
+    assert genome.parse_warnings == ("contig c1: pseudogene: 1",)
+    with pytest.warns(AnnotationWarning, match="contig c1: pseudogene: 1"):
+        reference = ReferenceRegion.from_genbank(path, contig="c1")
+    assert reference.parse_warnings == ("contig c1: pseudogene: 1",)
+    assert ReferenceRegion.from_genbank(path, contig="c2").parse_warnings == ()
+
+
+def test_predicted_genomes_have_no_parse_warnings(write_genbank, make_record) -> None:
+    path = write_genbank([make_record("c1", SEQUENCE, [cds(0, 12, pseudo="")])])
+    assert Genome.from_file(path, annotation="pyrodigal").parse_warnings == ()

@@ -81,6 +81,7 @@ class ParsedRecord:
     skipped: list[SkippedFeature] = field(default_factory=list)
     trimmed: int = 0
     unparsed: int = 0
+    warning: str | None = None
 
 
 _GZIP_MAGIC = b"\x1f\x8b"
@@ -129,13 +130,23 @@ def genbank_genome(records: list[SeqRecord], source: str) -> Genome:
     check_unique_ids(records, source)
     contigs: dict[str, Contig] = {}
     skipped: list[SkippedFeature] = []
+    parse_warnings: list[str] = []
     for record in records:
         parsed = parse_record(record)
         contigs[record_id(record)] = record_contig(record, parsed.genes)
         skipped.extend(parsed.skipped)
+        parse_warnings.extend(_warnings_of(parsed))
     return Genome(
-        contigs=contigs, name=genome_name(source), source=source, skipped_features=tuple(skipped)
+        contigs=contigs,
+        name=genome_name(source),
+        source=source,
+        skipped_features=tuple(skipped),
+        parse_warnings=tuple(parse_warnings),
     )
+
+
+def _warnings_of(parsed: ParsedRecord) -> tuple[str, ...]:
+    return () if parsed.warning is None else (parsed.warning,)
 
 
 def check_unique_ids(records: list[SeqRecord], source: str) -> None:
@@ -166,6 +177,7 @@ def read_reference_region(
         genes=tuple(parsed.genes),
         source_genome=str(path),
         skipped_features=tuple(parsed.skipped),
+        parse_warnings=_warnings_of(parsed),
     )
 
 
@@ -266,7 +278,7 @@ def parse_record(record: SeqRecord, region: Region | None = None) -> ParsedRecor
             _add_cds(
                 parsed, CdsFeature.from_biopython(feature, feature.location, contig_id, record)
             )
-    _warn_summary(contig_id, parsed)
+    parsed.warning = _warn_summary(contig_id, parsed)
     return parsed
 
 
@@ -352,7 +364,7 @@ def _five_prime_partial(location: Location) -> bool:
     return isinstance(location.start, BeforePosition)
 
 
-def _warn_summary(contig_id: str, parsed: ParsedRecord) -> None:
+def _warn_summary(contig_id: str, parsed: ParsedRecord) -> str | None:
     parts = [f"{reason}: {count}" for reason, count in _skip_counts(parsed)]
     untranslatable = sum(gene.protein_sequence is None for gene in parsed.genes)
     if untranslatable:
@@ -361,9 +373,11 @@ def _warn_summary(contig_id: str, parsed: ParsedRecord) -> None:
         parts.append(f"{parsed.trimmed} trimmed to whole codons")
     if parsed.unparsed:
         parts.append(f"{parsed.unparsed} with an unparseable location")
-    if parts:
-        message = f"contig {contig_id}: " + "; ".join(parts)
-        warnings.warn(message, AnnotationWarning, stacklevel=3)
+    if not parts:
+        return None
+    message = f"contig {contig_id}: " + "; ".join(parts)
+    warnings.warn(message, AnnotationWarning, stacklevel=3)
+    return message
 
 
 def _skip_counts(parsed: ParsedRecord) -> list[tuple[str, int]]:
