@@ -55,10 +55,10 @@ results written to results/
 Search several target genomes in one run by giving `--genome` more than one file:
 
 ```bash
-homolocus find --reference ecoli_pai.gbk --genome strain_a.fna strain_b.gbk --output results/
+homolocus find --reference ecoli_pai.gbk --genome strain_a.fna.gz strain_b.gbk --output results/
 ```
 
-The reference families and its self-search are computed once. Each genome is then searched on its own, so its results are the same as a run with that genome alone. Genomes are named after their files (`strain_a`, `strain_b`), and names must be unique. Each candidate line starts with its genome, and a genome without candidates prints `strain_b: no candidates`.
+The reference families and its self-search are computed once. Each genome is then searched on its own, so its results are the same as a run with that genome alone. Genomes are named after their files without the extension and any `.gz` (`strain_a`, `strain_b`), and names must be unique. Each candidate line starts with its genome, and a genome without candidates prints `strain_b: no candidates`.
 
 ### Naming and ordering genomes
 
@@ -148,6 +148,8 @@ Each candidate (`results.candidates`, ranked best first) keeps its evidence:
 - A supplied `/translation` is used when it is valid. Otherwise the CDS is translated with its `/transl_table` and `/codon_start`.
 
 **Target.** The target is one assembly with one or more contigs, as GenBank or FASTA. The format is detected from the file content, not the extension.
+
+**Compressed files.** Reference and target files may be gzip-compressed, as NCBI distributes them (`.fna.gz`, `.gbff.gz`). Compression is also detected from the content.
 
 - `--annotation auto` (the default) uses the CDS of a GenBank file when it has any, and predicts genes with Pyrodigal otherwise, which includes every FASTA file.
 - `--annotation pyrodigal` always predicts genes.

@@ -1,6 +1,8 @@
 """GenBank parsing into a Genome (spec 2.2, 3.1, 3.2)."""
 
+import gzip
 import warnings
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -299,3 +301,17 @@ def test_genbank_without_its_sequence_is_rejected_naming_file_and_record(tmp_pat
     path.write_text(NO_SEQUENCE, encoding="utf-8")
     with pytest.raises(ValueError, match=r"summary\.gbk: record 'c1' has no sequence; save"):
         read(path)
+
+
+def test_a_gzip_reference_gives_the_same_region_as_the_plain_file(
+    write_genbank, make_record
+) -> None:
+    cds = SeqFeature(FeatureLocation(0, 12, strand=1), type="CDS", qualifiers={})
+    plain = write_genbank([make_record("c1", "ATGAAACCCTAA" * 3, [cds])])
+    compressed = plain.with_name("input.gbk.gz")
+    compressed.write_bytes(gzip.compress(plain.read_bytes()))
+    region = ReferenceRegion.from_genbank(compressed, contig="c1", start=1, end=36)
+    assert region.source_genome == str(compressed)
+    expected = ReferenceRegion.from_genbank(plain, contig="c1", start=1, end=36)
+    assert replace(region, source_genome=str(plain)) == expected
+    assert len(region.genes) == 1

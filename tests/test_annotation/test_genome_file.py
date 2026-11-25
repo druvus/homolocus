@@ -1,6 +1,8 @@
 """Target genome input: format detection and annotation modes (spec 2.2, 2.3)."""
 
+import gzip
 import warnings
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -130,3 +132,58 @@ def test_genome_is_named_after_its_file(tmp_path, write_genbank, make_record, dn
     gbk = write_genbank([make_record("c1", contig_sequence(dna), [cds])])
     assert read_genome(gbk).name == read_genbank(gbk).name == "input"
     assert Genome.from_file(gbk, annotation="pyrodigal").name == "input"
+
+
+def gzip_copy(path: Path, name: str) -> Path:
+    """Write a gzip-compressed copy of a file next to it."""
+    target = path.with_name(name)
+    target.write_bytes(gzip.compress(path.read_bytes()))
+    return target
+
+
+def test_gzip_fasta_gives_the_same_genome_as_the_plain_file(tmp_path, dna) -> None:
+    plain = write_text(tmp_path, f">c1\n{contig_sequence(dna)}\n", "strain_A.fna")
+    compressed = gzip_copy(plain, "strain_A.fna.gz")
+    genome = read_genome(compressed)
+    assert genome.name == "strain_A"
+    assert genome.source == str(compressed)
+    assert replace(genome, source=str(plain)) == read_genome(plain)
+
+
+def test_gzip_genbank_gives_the_same_genome_as_the_plain_file(
+    write_genbank, make_record, dna
+) -> None:
+    cds = SeqFeature(FeatureLocation(500, 1403, strand=1), type="CDS")
+    plain = write_genbank([make_record("c1", contig_sequence(dna), [cds])])
+    compressed = gzip_copy(plain, "input.gbk.gz")
+    for read in (read_genome, read_genbank):
+        genome = read(compressed)
+        assert genome.name == "input"
+        assert replace(genome, source=str(plain)) == read(plain)
+
+
+def test_compression_is_detected_from_the_content_not_the_extension(tmp_path) -> None:
+    plain = write_text(tmp_path, ">c1\nACGT\n", "plain.txt")
+    assert detect_format(gzip_copy(plain, "looks_plain.fna")) == "fasta"
+
+
+@pytest.mark.parametrize(
+    ("file_name", "name"),
+    [("strain.fna.gz", "strain"), ("strain.FNA.GZ", "strain"), ("strain.gz", "strain")],
+)
+def test_a_trailing_gz_is_removed_from_the_genome_name(tmp_path, dna, file_name, name) -> None:
+    plain = write_text(tmp_path, f">c1\n{contig_sequence(dna)}\n", "plain.fna")
+    assert read_genome(gzip_copy(plain, file_name)).name == name
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [lambda data: data[:-20], lambda data: data[:2] + b"not a gzip header"],
+    ids=["truncated", "bad-header"],
+)
+def test_a_damaged_gzip_file_is_rejected_naming_the_file(tmp_path, dna, damage) -> None:
+    plain = write_text(tmp_path, f">c1\n{contig_sequence(dna)}\n", "plain.fna")
+    compressed = gzip_copy(plain, "cut.fna.gz")
+    compressed.write_bytes(damage(compressed.read_bytes()))
+    with pytest.raises(ValueError, match=r"cut\.fna\.gz: damaged gzip file"):
+        read_genome(compressed)
