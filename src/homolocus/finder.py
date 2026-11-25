@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from homolocus.config import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
-from homolocus.detection.evaluation import DetectionContext, detect
+from homolocus.detection.evaluation import DetectionContext, check_min_matches, detect
 from homolocus.detection.families import group_families
 from homolocus.models.alignment import Alignment
 from homolocus.models.gene_family import ReferenceFamilies
@@ -66,12 +66,17 @@ class RegionFinder:
         )
 
     def _shared(self) -> "_Shared":
-        """What every genome shares: the DIAMOND version, families and self-search."""
+        """What every genome shares: the DIAMOND version, families and self-search.
+
+        Settings that no candidate could satisfy are rejected here, before any
+        genome is searched.
+        """
         version = diamond_version()
         index = ProteinIndex.build(self.reference.genes, ())
         with tempfile.TemporaryDirectory(prefix="homolocus-") as workdir:
             self_hits, raw_self = self._self_search(index, Path(workdir) / "reference_self.tsv")
         families = group_families(self.reference.genes, self_hits, self.family_grouping)
+        check_min_matches(families, self.detection.min_matches)
         return _Shared(version, families, raw_self)
 
     def _run(self, genome: Genome, shared: "_Shared") -> RegionResults:
