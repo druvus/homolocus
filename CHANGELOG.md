@@ -15,6 +15,7 @@ All notable changes to homolocus are recorded here. The format follows [Keep a C
 - `summary.tsv` gains `missing_families`, listing each candidate's missing family IDs.
 - Plots fade each matched gene by the identity of its match: full opacity at 100 %, half at `--min-identity`. An identity key is in the legend.
 - `--names FILE` gives genomes presentation names and an order (file name, tab, name), used in the terminal summary, the combined summary, the plots and `analysis.json`. `Genome.display_name` and `Genome.label` carry it in the API, and output folders keep file names.
+- Reference and target files may be gzip-compressed (`.fna.gz`, `.gbff.gz`), detected from the content. Genome names drop the `.gz` (`strain.fna.gz` is `strain`), and a damaged gzip file is an input error naming the file.
 
 ### Changed
 

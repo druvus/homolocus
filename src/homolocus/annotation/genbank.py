@@ -4,11 +4,14 @@ Features are checked and translated here, once. Everything built from this
 module is trusted by the rest of the package.
 """
 
+import gzip
 import warnings
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TextIO
 
 from Bio import SeqIO
 from Bio.Seq import UndefinedSequenceError
@@ -80,6 +83,39 @@ class ParsedRecord:
     unparsed: int = 0
 
 
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+@contextmanager
+def open_text(path: str | Path) -> Iterator[TextIO]:
+    """Open an input file as UTF-8 text, decompressing it if it is gzip (spec 2.2).
+
+    Compression is detected from the content. A damaged gzip file raises
+    ValueError naming the file.
+    """
+    try:
+        with _open(path) as handle:
+            yield handle
+    except (EOFError, gzip.BadGzipFile) as error:
+        raise ValueError(f"{path}: damaged gzip file ({error})") from error
+
+
+def _open(path: str | Path) -> TextIO:
+    with open(path, "rb") as probe:
+        compressed = probe.read(2) == _GZIP_MAGIC
+    if compressed:
+        return gzip.open(path, "rt", encoding="utf-8")
+    return open(path, encoding="utf-8")
+
+
+def genome_name(source: str | Path) -> str:
+    """Name a genome after its file, without ``.gz`` and the extension (spec 5.3)."""
+    path = Path(source)
+    if path.suffix.lower() == ".gz":
+        path = path.with_suffix("")
+    return path.stem
+
+
 def read_genbank(path: str | Path) -> Genome:
     """Read every record of a GenBank file into a Genome, one contig per record."""
     return genbank_genome(read_records(path), source=str(path))
@@ -98,7 +134,7 @@ def genbank_genome(records: list[SeqRecord], source: str) -> Genome:
         contigs[record_id(record)] = record_contig(record, parsed.genes)
         skipped.extend(parsed.skipped)
     return Genome(
-        contigs=contigs, name=Path(source).stem, source=source, skipped_features=tuple(skipped)
+        contigs=contigs, name=genome_name(source), source=source, skipped_features=tuple(skipped)
     )
 
 
@@ -163,7 +199,7 @@ def read_records(path: str | Path) -> list[SeqRecord]:
     Raises ValueError naming the file and record when a record carries no
     sequence, as in GenBank files saved without it.
     """
-    with open(path, encoding="utf-8") as handle:
+    with open_text(path) as handle:
         records = list(SeqIO.parse(handle, "genbank"))
     for record in records:
         _require_sequence(record, path)

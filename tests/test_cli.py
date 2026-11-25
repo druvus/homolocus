@@ -1,6 +1,7 @@
 """Command-line interface: ``homolocus find`` (spec 13)."""
 
 import dataclasses
+import gzip
 from dataclasses import replace
 from pathlib import Path
 
@@ -164,6 +165,30 @@ def test_find_reads_inputs_runs_the_finder_and_writes_the_output(inputs, finder_
     output = inputs[-1]
     for name in ("summary.tsv", "analysis.json", "plots/regions.png"):
         assert (Path(output) / name).is_file()
+
+
+def gzip_inputs(argv: list[str]) -> list[str]:
+    """The same arguments with the reference and genome files gzip-compressed."""
+    compressed = list(argv)
+    for flag in ("--reference", "--genome"):
+        at = argv.index(flag) + 1
+        path = Path(argv[at])
+        target = path.with_name(path.name + ".gz")
+        target.write_bytes(gzip.compress(path.read_bytes()))
+        compressed[at] = str(target)
+    return compressed
+
+
+def test_gzip_reference_and_genome_are_read_and_named_without_gz(
+    inputs, finder_calls, tmp_path
+) -> None:
+    names = tmp_path / "names.tsv"
+    names.write_text("target.gbk.gz\tE. coli K-12\n", encoding="utf-8")
+    assert main([*gzip_inputs(inputs), "--names", str(names)]) == 0
+    ((finder, genome),) = finder_calls
+    assert len(finder.reference.genes) == 3
+    assert (genome.name, genome.label) == ("target", "E. coli K-12")
+    assert len(list(genome.genes())) == 3
 
 
 def test_reference_coordinates_are_one_based(inputs, finder_calls) -> None:

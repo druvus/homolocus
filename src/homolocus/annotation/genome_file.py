@@ -14,6 +14,8 @@ from Bio.SeqRecord import SeqRecord
 from homolocus.annotation.genbank import (
     check_unique_ids,
     genbank_genome,
+    genome_name,
+    open_text,
     read_records,
     record_contig,
     record_id,
@@ -30,7 +32,7 @@ ANNOTATION_MODES: tuple[Annotation, ...] = ("auto", "pyrodigal")
 
 def detect_format(path: str | Path) -> FileFormat:
     """Detect GenBank (``LOCUS``) or FASTA (``>``) from the first non-empty line."""
-    with open(path, encoding="utf-8") as handle:
+    with open_text(path) as handle:
         for line in handle:
             stripped = line.strip()
             if stripped.startswith("LOCUS"):
@@ -56,7 +58,7 @@ def read_genome(path: str | Path, annotation: Annotation = "auto") -> Genome:
 
 
 def _read_fasta(path: str | Path) -> list[SeqRecord]:
-    with open(path, encoding="utf-8") as handle:
+    with open_text(path) as handle:
         return list(SeqIO.parse(handle, "fasta"))
 
 
@@ -68,4 +70,4 @@ def _predicted_genome(records: list[SeqRecord], source: str) -> Genome:
     check_unique_ids(records, source)
     predicted = predict_genes({record_id(r): record_sequence(r) for r in records})
     contigs = {record_id(r): record_contig(r, predicted[record_id(r)]) for r in records}
-    return Genome(contigs=contigs, name=Path(source).stem, source=source)
+    return Genome(contigs=contigs, name=genome_name(source), source=source)
