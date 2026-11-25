@@ -13,7 +13,7 @@ from Bio.SeqFeature import (
 )
 from Bio.SeqRecord import SeqRecord
 
-from homolocus import Genome, SkippedFeature, SkipReason
+from homolocus import Genome, ReferenceRegion, SkippedFeature, SkipReason
 from homolocus.annotation.genbank import (
     AnnotationWarning,
     parse_record,
@@ -271,3 +271,31 @@ def test_record_without_sequence_is_rejected() -> None:
     record = SeqRecord(None, id="c1", name="c1", description="no sequence")
     with pytest.raises(ValueError, match="no sequence"):
         record_contig(record, [])
+
+
+# A GenBank file saved without its sequence (for example NCBI's summary "GenBank" format)
+NO_SEQUENCE = """LOCUS       c1                       120 bp    DNA     linear   BCT 01-JAN-2000
+DEFINITION  record without sequence.
+ACCESSION   c1
+VERSION     c1
+FEATURES             Location/Qualifiers
+     CDS             1..12
+                     /translation="MKP"
+CONTIG      join(X00001.1:1..120)
+//
+"""
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        read_genbank,
+        lambda path: Genome.from_file(path, annotation="pyrodigal"),
+        ReferenceRegion.from_genbank,
+    ],
+)
+def test_genbank_without_its_sequence_is_rejected_naming_file_and_record(tmp_path, read) -> None:
+    path = tmp_path / "summary.gbk"
+    path.write_text(NO_SEQUENCE, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"summary\.gbk: record 'c1' has no sequence; save"):
+        read(path)

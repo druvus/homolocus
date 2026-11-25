@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from Bio import SeqIO
+from Bio.Seq import UndefinedSequenceError
 from Bio.SeqFeature import (
     AfterPosition,
     BeforePosition,
@@ -157,9 +158,26 @@ def _region(start: int | None, end: int | None, record_length: int) -> Region:
 
 
 def read_records(path: str | Path) -> list[SeqRecord]:
-    """Read all records of a GenBank file, closing the file before returning."""
+    """Read all records of a GenBank file, closing the file before returning.
+
+    Raises ValueError naming the file and record when a record carries no
+    sequence, as in GenBank files saved without it.
+    """
     with open(path, encoding="utf-8") as handle:
-        return list(SeqIO.parse(handle, "genbank"))
+        records = list(SeqIO.parse(handle, "genbank"))
+    for record in records:
+        _require_sequence(record, path)
+    return records
+
+
+def _require_sequence(record: SeqRecord, path: str | Path) -> None:
+    try:
+        record_sequence(record)
+    except UndefinedSequenceError:
+        raise ValueError(
+            f"{path}: record {record_id(record)!r} has no sequence; save the GenBank file "
+            "with its sequence (from NCBI, choose 'GenBank (full)')"
+        ) from None
 
 
 def record_id(record: SeqRecord) -> str:

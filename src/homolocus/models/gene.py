@@ -1,5 +1,6 @@
 """Protein-coding gene model (spec 4.1, 5.1)."""
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Literal
@@ -86,6 +87,13 @@ def sorted_genes(
             raise ValueError(f"gene {gene.id} belongs to contig {gene.contig_id}, not {contig_id}")
         if gene.start < start or gene.end > end:
             raise ValueError(f"gene {gene.id} extends past the bounds of {label}")
-    if len({gene.id for gene in checked}) != len(checked):
-        raise ValueError(f"{label} has duplicate gene IDs")
+    duplicates = _duplicate_ids(checked)
+    if duplicates:
+        raise ValueError(f"{label} has duplicate gene IDs: {', '.join(duplicates)}")
     return tuple(sorted(checked, key=genomic_order))
+
+
+def _duplicate_ids(genes: Iterable[Gene]) -> list[str]:
+    """Gene IDs that occur more than once, sorted."""
+    counts = Counter(gene.id for gene in genes)
+    return sorted(gene_id for gene_id, count in counts.items() if count > 1)
