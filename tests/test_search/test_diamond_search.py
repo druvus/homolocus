@@ -1,10 +1,10 @@
 """Running DIAMOND searches (spec 6.1, 6.3, 6.5)."""
 
 import stat
-from pathlib import Path
 
 import pytest
 
+from fake_tools import fake_diamond
 from homolocus import DiamondSearch, Gene
 from homolocus.models.gene_match import aggregate
 from homolocus.search.diamond import (
@@ -25,13 +25,6 @@ def protein_gene(contig_id: str, number: int, protein: str | None) -> Gene:
 
 def genes(contig_id: str, *sequences: str | None) -> list[Gene]:
     return [protein_gene(contig_id, n, seq) for n, seq in enumerate(sequences)]
-
-
-def fake_diamond(tmp_path: Path, script: str) -> str:
-    path = tmp_path / "fake-diamond"
-    path.write_text("#!/bin/sh\n" + script, encoding="utf-8")
-    path.chmod(path.stat().st_mode | stat.S_IEXEC)
-    return str(path)
 
 
 # Without DIAMOND

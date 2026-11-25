@@ -1,5 +1,6 @@
 """RegionFinder: run the whole pipeline for one reference region and one genome (spec 12)."""
 
+import logging
 import tempfile
 import warnings
 from collections.abc import Callable, Iterable
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from homolocus.config import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
+from homolocus.coordinates import to_one_based
 from homolocus.detection.evaluation import DetectionContext, check_min_matches, detect
 from homolocus.detection.families import group_families
 from homolocus.models.alignment import Alignment
@@ -24,6 +26,8 @@ from homolocus.results import (
 )
 from homolocus.search.diamond import diamond_version, search
 from homolocus.search.protein_index import ProteinIndex
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -46,7 +50,7 @@ class RegionFinder:
         Warnings raised during the run are kept in the results and re-issued.
         """
         shared, early = _recorded(self._shared)
-        results, late = _recorded(lambda: self._run(genome, shared))
+        results, late = _recorded(lambda: self._run(genome, shared, 1, 1))
         return replace(results, warnings=early + late)
 
     def find_all(self, genomes: Iterable[Genome]) -> GenomeSetResults:
@@ -60,7 +64,10 @@ class RegionFinder:
         check_genome_names(genome.name for genome in targets)
         check_genome_labels(genome.label for genome in targets)
         shared, early = _recorded(self._shared)
-        runs = [_recorded(partial(self._run, genome, shared)) for genome in targets]
+        runs = [
+            _recorded(partial(self._run, genome, shared, number, len(targets)))
+            for number, genome in enumerate(targets, start=1)
+        ]
         return GenomeSetResults(
             tuple(replace(results, warnings=early + late) for results, late in runs)
         )
@@ -72,14 +79,24 @@ class RegionFinder:
         genome is searched.
         """
         version = diamond_version()
+        start, end = to_one_based(self.reference.start, self.reference.end)
+        logger.info(
+            "reference %s:%d-%d, genes: %d",
+            self.reference.contig_id,
+            start,
+            end,
+            len(self.reference.genes),
+        )
         index = ProteinIndex.build(self.reference.genes, ())
         with tempfile.TemporaryDirectory(prefix="homolocus-") as workdir:
             self_hits, raw_self = self._self_search(index, Path(workdir) / "reference_self.tsv")
         families = group_families(self.reference.genes, self_hits, self.family_grouping)
+        logger.info("reference families: %d", len(families))
         check_min_matches(families, self.detection.min_matches)
         return _Shared(version, families, raw_self)
 
-    def _run(self, genome: Genome, shared: "_Shared") -> RegionResults:
+    def _run(self, genome: Genome, shared: "_Shared", number: int, total: int) -> RegionResults:
+        logger.info("searching genome %d/%d: %s", number, total, genome.label)
         index = ProteinIndex.build(self.reference.genes, genome.genes())
         with tempfile.TemporaryDirectory(prefix="homolocus-") as workdir:
             main_path = Path(workdir) / "diamond.tsv"
@@ -88,12 +105,15 @@ class RegionFinder:
         context = DetectionContext(
             self.reference, shared.families, self.search, self.detection, self.scoring
         )
+        candidates = detect(context, genome, matches)
+        noun = "candidate" if len(candidates) == 1 else "candidates"
+        logger.info("%s: %d %s", genome.label, len(candidates), noun)
         return RegionResults(
             reference=self.reference,
             genome=genome,
             families=shared.families,
             matches=matches,
-            candidates=detect(context, genome, matches),
+            candidates=candidates,
             search=self.search,
             family_grouping=self.family_grouping,
             detection=self.detection,

@@ -4,7 +4,9 @@ This is the only module that knows about DIAMOND. It turns DIAMOND output
 into Alignment models with canonical gene IDs and internal coordinates.
 """
 
+import logging
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -33,6 +35,8 @@ OUTPUT_FIELDS = (
     "slen",
 )
 """Tabular columns requested from DIAMOND (spec 6.4)."""
+
+logger = logging.getLogger(__name__)
 
 _COLUMN = {name: position for position, name in enumerate(OUTPUT_FIELDS)}
 
@@ -223,6 +227,7 @@ def _resolve(executable: str) -> str:
 
 
 def _run(command: list[str]) -> str:
+    logger.debug("running: %s", shlex.join(command))
     try:
         completed = subprocess.run(command, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as error:

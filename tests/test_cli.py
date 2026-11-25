@@ -132,28 +132,6 @@ def test_top_level_help_describes_the_tool(capsys) -> None:
     assert "homolocus find" in capsys.readouterr().out
 
 
-@pytest.fixture
-def inputs(tmp_path, dna, make_record):
-    """Command-line arguments for a readable GenBank reference and target."""
-    reference = genbank(tmp_path / "ref.gbk", "ref", dna, make_record)
-    target = genbank(tmp_path / "target.gbk", "t1", dna, make_record)
-    output = tmp_path / "out"
-    return ["find", "--reference", str(reference), "--genome", str(target), "--output", str(output)]
-
-
-@pytest.fixture
-def finder_calls(monkeypatch):
-    """Replace the search with the sample results and record each RegionFinder used."""
-    calls = []
-
-    def fake_find(finder, genome):
-        calls.append((finder, genome))
-        return sample_results()
-
-    monkeypatch.setattr(RegionFinder, "find", fake_find)
-    return calls
-
-
 def test_find_reads_inputs_runs_the_finder_and_writes_the_output(inputs, finder_calls) -> None:
     assert main([*inputs, "--min-identity", "40", "--no-family-grouping"]) == 0
     ((finder, genome),) = finder_calls
@@ -229,12 +207,18 @@ def test_an_invalid_region_fails_with_a_one_line_error(inputs, capsys) -> None:
     assert capsys.readouterr().err.startswith("homolocus: error: ")
 
 
+def error_line(err: str) -> str:
+    """The last stderr line, after any progress lines; there must be no traceback."""
+    assert "Traceback" not in err
+    return err.splitlines()[-1]
+
+
 def test_missing_diamond_fails_with_a_one_line_error(inputs, monkeypatch, capsys) -> None:
     monkeypatch.setenv("PATH", "")
     assert main(inputs) == 1
-    err = capsys.readouterr().err
-    assert err.startswith("homolocus: error: ")
-    assert "DIAMOND" in err
+    error = error_line(capsys.readouterr().err)
+    assert error.startswith("homolocus: error: ")
+    assert "DIAMOND" in error
 
 
 def test_find_prints_one_line_per_candidate_then_the_output(inputs, finder_calls, capsys) -> None:
@@ -359,9 +343,8 @@ def test_genomes_with_the_same_file_name_are_rejected(inputs, tmp_path, dna, mak
     genome_at = inputs.index("--genome") + 1
     argv = [*inputs[: genome_at + 1], str(clash), *inputs[genome_at + 1 :]]
     assert main(argv) == 1
-    err = capsys.readouterr().err
-    assert err.startswith("homolocus: error: duplicate genome name 'target'")
-    assert len(err.splitlines()) == 1
+    error = error_line(capsys.readouterr().err)
+    assert error.startswith("homolocus: error: duplicate genome name 'target'")
 
 
 @pytest.mark.diamond
@@ -424,9 +407,8 @@ def test_a_malformed_names_file_fails_before_any_search(
 ) -> None:
     argv = with_names(two_targets, tmp_path, "target.gbk E. coli K-12\n")
     assert main(argv) == 1
-    err = capsys.readouterr().err
-    assert err.startswith("homolocus: error: names file line 1: expected a file name")
-    assert len(err.splitlines()) == 1
+    error = error_line(capsys.readouterr().err)
+    assert error.startswith("homolocus: error: names file line 1: expected a file name")
     assert find_all_calls == []
 
 
@@ -453,5 +435,5 @@ def test_an_interrupted_run_stops_with_one_line_and_exit_130(inputs, monkeypatch
     monkeypatch.setattr(RegionFinder, "find", interrupted)
     assert main(inputs) == 130
     captured = capsys.readouterr()
-    assert captured.err == "homolocus: interrupted\n"
+    assert error_line(captured.err) == "homolocus: interrupted"
     assert captured.out == ""

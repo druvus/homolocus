@@ -15,6 +15,8 @@ All notable changes to homolocus are recorded here. The format follows [Keep a C
 - `summary.tsv` gains `missing_families`, listing each candidate's missing family IDs.
 - Plots fade each matched gene by the identity of its match: full opacity at 100 %, half at `--min-identity`. An identity key is in the legend.
 - `--names FILE` gives genomes presentation names and an order (file name, tab, name), used in the terminal summary, the combined summary, the plots and `analysis.json`. `Genome.display_name` and `Genome.label` carry it in the API, and output folders keep file names.
+- Progress messages: `find` reports on stderr the reference and its families, each genome read and searched with its candidate count, and where results are written. `-q/--quiet` hides them and `-v/--verbose` adds each DIAMOND command. In Python they go to the `homolocus` logger, which prints nothing unless logging is configured.
+- `homolocus --version` prints the homolocus and DIAMOND versions.
 - Reference and target files may be gzip-compressed (`.fna.gz`, `.gbff.gz`), detected from the content. Genome names drop the `.gz` (`strain.fna.gz` is `strain`), and a damaged gzip file is an input error naming the file.
 
 ### Changed

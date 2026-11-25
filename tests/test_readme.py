@@ -30,10 +30,11 @@ def code_blocks(language: str) -> list[str]:
 
 
 def find_options() -> set[str]:
-    """Every option ``homolocus find --help`` lists."""
+    """Every option ``homolocus --help`` and ``homolocus find --help`` list."""
     help_text = io.StringIO()
-    with contextlib.redirect_stdout(help_text), contextlib.suppress(SystemExit):
-        build_parser().parse_args(["find", "--help"])
+    for argv in (["--help"], ["find", "--help"]):
+        with contextlib.redirect_stdout(help_text), contextlib.suppress(SystemExit):
+            build_parser().parse_args(argv)
     return set(re.findall(r"(?<![\w-])--[a-z][a-z-]*", help_text.getvalue()))
 
 
