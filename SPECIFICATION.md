@@ -971,12 +971,13 @@ homolocus/
 │       ├── __init__.py
 │       ├── layout.py              # tracks and gene glyphs from results (pure)
 │       └── region_plot.py
-└── tests/
-    ├── test_models/
-    ├── test_annotation/
-    ├── test_search/
-    ├── test_detection/
-    └── test_visualization/
+├── tests/
+│   ├── test_models/
+│   ├── test_annotation/
+│   ├── test_search/
+│   ├── test_detection/
+│   └── test_visualization/
+└── benchmarks/                    # real-data checks, outside the test suite (17)
 ```
 
 ────────
@@ -1006,6 +1007,8 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 **Test behaviour, not implementation.** Tests call the public API and module functions the way their user does and check the result that user would see. A test that would still pass if every function returned nothing is removed. Write the failing test before the code it covers.
 
 **Property-based tests.** Use `hypothesis` for invariants such as coordinate round-trips (1-based inclusive ↔ 0-based half-open) and interval unions (coverage never double counts and never exceeds 1).
+
+**[PROPOSED] Real-data benchmarks.** `benchmarks/` holds checks against public genomes, outside the test suite and never run by `pytest`. They need network access and DIAMOND, download into a git-ignored directory, and report their findings instead of asserting them. What they show informs section 18; it never changes a default silently.
 
 **Quality gates.** Run on `src/` before a change is considered done:
 
@@ -1057,6 +1060,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 34. Progress through the `homolocus` logger with no handlers in the package; CLI progress on stderr at INFO with `-q`/`-v`; `--version` with the DIAMOND version; exit code 130 on interrupt, 13.
 35. Overview capped at `PlotOptions.candidates` per genome with a note naming what was left out; pages of at most `lines_per_page` lines (`regions.png`, `regions_002.png`, …); `plot_pages()`; `--no-plots`; `parameters.plots` in `analysis.json`, 11, 11.4, 13, 14.
 36. A macOS CI job with DIAMOND from Bioconda, a 98 % branch-coverage floor, and a weekly pre-release CI job, 15.
+37. A `benchmarks/` directory of real-data checks that report rather than assert, outside the test suite, 16, 17, 18.
 
 **Still open:**
 
