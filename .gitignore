@@ -15,3 +15,6 @@ dist/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+
+# Genomes downloaded by the benchmarks (spec 17)
+benchmarks/data/
