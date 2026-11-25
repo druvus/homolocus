@@ -827,8 +827,11 @@ homolocus find --reference ecoli_pai.gbk --genome target.gbk --output results/
 - **[PROPOSED]** Options are generated from the configuration dataclasses: one flag per field of `DiamondSearch`, `FamilyGrouping` and `RegionDetection`, named after the field (`min_identity` → `--min-identity`), and one per `ScoringWeights` field prefixed `--weight-` (`--weight-order`). `--no-family-grouping` disables grouping (`family_min_identity=None`) and `--annotation {auto,pyrodigal}` selects target annotation. Unset flags keep the dataclass defaults, which `--help` shows. `--start` and `--end` are given together or not at all.
 - **[PROPOSED]** `--genome` takes one or more paths (`--genome a.fna b.fna`, or repeated). All genomes are read before any search, so an unreadable one exits with 1 and no output. With several genomes each stdout candidate line starts with its genome name, and a genome without candidates prints `<genome>: no candidates`.
 - **[PROPOSED]** `--names FILE` gives genomes presentation names and an order. The file has one genome per line: the genome's file name (path ignored), a tab, and its presentation name; blank lines and lines starting with `#` are ignored and there is no header. Genomes follow the file's order, unlisted ones after it in command-line order. A line that matches no `--genome` file is a warning. A malformed line, or a file name or presentation name listed twice, is an input error (exit 1). Stdout lines use labels.
-- **[PROPOSED]** Exit codes: 0 on success; 2 for a usage error or an invalid setting; 1 when input cannot be read or is invalid, or DIAMOND is missing or fails. Errors are one line on stderr without a traceback.
+- **[PROPOSED]** Exit codes: 0 on success; 2 for a usage error or an invalid setting; 1 when input cannot be read or is invalid, or DIAMOND is missing or fails; 130 when the run is interrupted (Ctrl-C), after printing `homolocus: interrupted`. Errors are one line on stderr without a traceback.
 - **[PROPOSED]** After writing, `find` prints one line per candidate to stdout (rank, candidate ID, `contig:start-end` 1-based, score, reference coverage, flags), or `no candidates`, then the output directory. Warnings still go to stderr through the `warnings` module.
+- **[PROPOSED]** The package reports progress through the `logging` logger `homolocus` and never adds handlers itself, so API users see it only when they configure logging (`logging.basicConfig(level=logging.INFO)`). `INFO` reports the reference (its genes, and its families after the self-search), each genome read, `searching genome i/n: <label>` followed by `<label>: k candidates`, and the output directory written. `DEBUG` adds each DIAMOND command line.
+- **[PROPOSED]** `find` prints progress to stderr as `homolocus: <message>`, at `INFO` by default. `-q/--quiet` shows only warnings and errors; `-v/--verbose` adds `DEBUG`. Warnings still go through the `warnings` module, and stdout is unchanged.
+- **[PROPOSED]** `homolocus --version` prints `homolocus <version> (DIAMOND <version>)`, or `(DIAMOND not found)` when no `diamond` is on `PATH`, and exits 0.
 
 ────────
 
@@ -1043,6 +1046,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 31. Genome presentation names and order from a `--names` mapping file (file name, tab, name; path ignored), shown as labels while folders keep `name`; unmatched lines warn, malformed or duplicated ones exit 1, 5.3, 11, 12, 13, 14, 16.
 32. gzip-compressed reference and target files, detected from content, with `.gz` removed from genome names, 2.1, 2.2, 5.3, 12.
 33. Short model reprs without sequences or raw output; parse warnings kept on `Genome` and `ReferenceRegion` and written to `analysis.json` with `reference: `/`target: ` prefixes; family names in `analysis.json`, 5, 5.3, 5.4, 14.
+34. Progress through the `homolocus` logger with no handlers in the package; CLI progress on stderr at INFO with `-q`/`-v`; `--version` with the DIAMOND version; exit code 130 on interrupt, 13.
 
 **Still open:**
 

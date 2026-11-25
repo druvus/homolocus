@@ -12,6 +12,10 @@ from Bio.Seq import Seq
 from Bio.SeqFeature import SeqFeature
 from Bio.SeqRecord import SeqRecord
 
+from genome_files import genbank
+from homolocus import RegionFinder
+from sample_world import results as sample_results
+
 MISSING_DIAMOND = "DIAMOND executable not found on PATH; install DIAMOND 2.0+"
 
 
@@ -45,6 +49,28 @@ def searches(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
 
     monkeypatch.setattr("homolocus.finder.search", fake_search)
     monkeypatch.setattr("homolocus.finder.diamond_version", lambda: "2.2.9")
+    return calls
+
+
+@pytest.fixture
+def inputs(tmp_path, dna, make_record):
+    """Command-line arguments for a readable GenBank reference and target."""
+    reference = genbank(tmp_path / "ref.gbk", "ref", dna, make_record)
+    target = genbank(tmp_path / "target.gbk", "t1", dna, make_record)
+    output = tmp_path / "out"
+    return ["find", "--reference", str(reference), "--genome", str(target), "--output", str(output)]
+
+
+@pytest.fixture
+def finder_calls(monkeypatch):
+    """Replace the search with the sample results and record each RegionFinder used."""
+    calls = []
+
+    def fake_find(finder, genome):
+        calls.append((finder, genome))
+        return sample_results()
+
+    monkeypatch.setattr(RegionFinder, "find", fake_find)
     return calls
 
 

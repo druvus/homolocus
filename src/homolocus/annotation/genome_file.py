@@ -5,6 +5,7 @@ GenBank without CDS, and anything read with ``"pyrodigal"`` get genes
 predicted by Pyrodigal.
 """
 
+import logging
 from pathlib import Path
 from typing import Literal
 
@@ -28,6 +29,8 @@ Annotation = Literal["auto", "pyrodigal"]
 FileFormat = Literal["genbank", "fasta"]
 
 ANNOTATION_MODES: tuple[Annotation, ...] = ("auto", "pyrodigal")
+
+logger = logging.getLogger(__name__)
 
 
 def detect_format(path: str | Path) -> FileFormat:
@@ -53,8 +56,12 @@ def read_genome(path: str | Path, annotation: Annotation = "auto") -> Genome:
         raise ValueError(f"unknown annotation mode {annotation!r}; expected 'auto' or 'pyrodigal'")
     records = _read_fasta(path) if detect_format(path) == "fasta" else read_records(path)
     if annotation == "auto" and _has_cds(records):
-        return genbank_genome(records, source=str(path))
-    return _predicted_genome(records, source=str(path))
+        genome = genbank_genome(records, source=str(path))
+    else:
+        genome = _predicted_genome(records, source=str(path))
+    n_genes = sum(contig.n_genes for contig in genome.contigs.values())
+    logger.info("read genome %s, contigs: %d, genes: %d", genome.name, len(genome.contigs), n_genes)
+    return genome
 
 
 def _read_fasta(path: str | Path) -> list[SeqRecord]:

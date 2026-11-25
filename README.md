@@ -87,9 +87,12 @@ Run `homolocus find --help` to see every option and its default. The exit code i
 
 - 0 on success, including when nothing is found;
 - 2 for a usage error or an invalid setting;
-- 1 when an input can't be read or is invalid, or DIAMOND is missing or fails.
+- 1 when an input can't be read or is invalid, or DIAMOND is missing or fails;
+- 130 when the run is interrupted with Ctrl-C.
 
-Errors are one line on stderr.
+Errors are one line on stderr. While it runs, `find` reports its progress on stderr (the reference and its families, each genome read and searched, and where the results go); stdout holds only the summary above. `--quiet` (`-q`) shows only warnings and errors, and `--verbose` (`-v`) also shows each DIAMOND command. `homolocus --version` prints the homolocus and DIAMOND versions.
+
+In Python, progress goes to the `homolocus` logger, which prints nothing unless logging is configured, for example with `logging.basicConfig(level=logging.INFO)`.
 
 ## Quick start: Python
 

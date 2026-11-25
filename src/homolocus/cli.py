@@ -8,9 +8,12 @@ and the dataclass defaults apply. Coordinates on the command line are
 
 import argparse
 import dataclasses
+import logging
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
+from importlib.metadata import version
 from typing import Any, Literal, get_args, get_origin, get_type_hints
 
 from homolocus.config import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
@@ -20,7 +23,7 @@ from homolocus.genome_names import apply_genome_names, read_genome_names
 from homolocus.models.genome import Genome
 from homolocus.models.reference import ReferenceRegion
 from homolocus.results import GenomeSetResults, RegionResults, candidate_flags
-from homolocus.search.diamond import DiamondError
+from homolocus.search.diamond import DiamondError, DiamondNotFoundError, diamond_version
 
 OPTION_HELP = {
     "evalue": "pair-level E-value threshold",
@@ -65,6 +68,8 @@ _DISABLE_FLAGS = {"family_min_identity": ("--no-family-grouping", "do not group 
 EXIT_INTERRUPTED = 130
 """Exit code after Ctrl-C, the shell convention for termination by SIGINT."""
 
+_LOG_LEVELS = {"quiet": logging.WARNING, "normal": logging.INFO, "verbose": logging.DEBUG}
+
 
 @dataclass(frozen=True)
 class FinderSettings:
@@ -92,7 +97,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ValueError as error:
         parser.error(str(error))
     try:
-        results = _find(args, settings)
+        with _progress_on_stderr(_LOG_LEVELS[args.verbosity]):
+            results = _find(args, settings)
     except (OSError, ValueError, DiamondError) as error:
         sys.stderr.write(f"homolocus: error: {error}\n")
         return 1
@@ -129,9 +135,13 @@ def _candidate_lines(results: RegionResults) -> list[str]:
 def build_parser() -> argparse.ArgumentParser:
     """The ``homolocus`` argument parser with its ``find`` command."""
     parser = argparse.ArgumentParser(prog="homolocus", description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--version", action=_VersionAction, help="show the homolocus and DIAMOND versions"
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     find = commands.add_parser("find", help="find regions homologous to a reference region")
     _add_inputs(find)
+    _add_verbosity(find)
     for title, config, prefix in _CONFIG_GROUPS:
         _add_config_group(find.add_argument_group(title), config, prefix)
     return parser
@@ -207,6 +217,69 @@ def _add_inputs(parser: argparse.ArgumentParser) -> None:
         help="TSV of genome file name, tab, presentation name; sets names and their order",
     )
     inputs.add_argument("--output", required=True, help="output directory")
+
+
+def _add_verbosity(parser: argparse.ArgumentParser) -> None:
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
+        "-q",
+        "--quiet",
+        dest="verbosity",
+        action="store_const",
+        const="quiet",
+        help="show only warnings and errors on stderr",
+    )
+    verbosity.add_argument(
+        "-v",
+        "--verbose",
+        dest="verbosity",
+        action="store_const",
+        const="verbose",
+        help="also show each DIAMOND command line",
+    )
+    parser.set_defaults(verbosity="normal")
+
+
+@contextmanager
+def _progress_on_stderr(level: int) -> Iterator[None]:
+    """Show the package's progress messages on stderr while the block runs (spec 13)."""
+    logger = logging.getLogger("homolocus")
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("homolocus: %(message)s"))
+    previous = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(level)
+    try:
+        yield
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous)
+
+
+def version_line() -> str:
+    """``homolocus <version> (DIAMOND <version>)``, or ``(DIAMOND not found)``."""
+    try:
+        diamond = f"DIAMOND {diamond_version()}"
+    except DiamondNotFoundError:
+        diamond = "DIAMOND not found"
+    return f"homolocus {version('homolocus')} ({diamond})"
+
+
+class _VersionAction(argparse.Action):
+    """``--version``: print the version line and exit 0."""
+
+    def __init__(self, option_strings: Sequence[str], dest: str, **kwargs: Any) -> None:
+        super().__init__(option_strings, dest, nargs=0, default=argparse.SUPPRESS, **kwargs)
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: object,
+        option_string: str | None = None,
+    ) -> None:
+        sys.stdout.write(version_line() + "\n")
+        parser.exit()
 
 
 def _add_config_group(group: argparse._ArgumentGroup, config: type, prefix: str) -> None:

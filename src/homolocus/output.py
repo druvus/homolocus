@@ -8,6 +8,7 @@ directory each, plus a combined summary.tsv and plots/regions.png.
 """
 
 import json
+import logging
 from collections.abc import Iterable
 from dataclasses import asdict
 from importlib.metadata import version
@@ -35,10 +36,13 @@ FLOAT_FORMAT = "%.6g"
 PLOT_DPI = 150
 """Resolution of the PNG plots (spec 11.4)."""
 
+logger = logging.getLogger(__name__)
+
 
 def write_results(results: RegionResults, output_dir: str | Path) -> None:
     """Write summary, candidate tables, raw alignments, run metadata and plots."""
     root = Path(output_dir)
+    logger.info("writing results to %s", root)
     candidates, alignments, plots = root / "candidates", root / "alignments", root / "plots"
     for directory in (candidates, alignments, plots):
         directory.mkdir(parents=True, exist_ok=True)
@@ -55,6 +59,7 @@ def write_results(results: RegionResults, output_dir: str | Path) -> None:
 def write_genome_set(results: GenomeSetResults, output_dir: str | Path) -> None:
     """Write each genome to ``output_dir/<genome>/``, then the combined files (spec 14)."""
     root = Path(output_dir)
+    logger.info("writing results to %s", root)
     for name, genome_results in results.items():
         write_results(genome_results, root / name)
     (root / "plots").mkdir(exist_ok=True)  # root exists: a set has at least one genome
