@@ -18,7 +18,13 @@ It tolerates:
 
 homolocus needs Python 3.10 or later and the DIAMOND executable.
 
-1. Install DIAMOND 2.0 or later from its [releases](https://github.com/bbuchfink/diamond/releases), and put `diamond` on your `PATH`. CI uses DIAMOND 2.2.9. You can check with `diamond version`.
+1. Install DIAMOND 2.0 or later and put `diamond` on your `PATH`. With conda or mamba:
+
+    ```bash
+    conda install -c conda-forge -c bioconda diamond
+    ```
+
+    Or take a binary from its [releases](https://github.com/bbuchfink/diamond/releases). CI uses DIAMOND 2.2.9. Check with `diamond version`.
 2. Install homolocus from a checkout of this repository (it isn't on PyPI yet):
 
 ```bash
@@ -215,6 +221,15 @@ results/
 - **Several genomes:** `results/<genome>/` holds the layout above for each genome. `results/summary.tsv` lists every candidate of every genome with a leading `genome` column. `results/plots/regions.png` shows the reference and the best candidates of every genome, titled by genome, and notes genomes without candidates. A single genome keeps the layout above.
 - **Deterministic:** the same input and settings give byte-identical files, with no timestamps. Writing again into a directory replaces the files homolocus manages, removes stale candidate files, and leaves other files alone.
 
+## Reading the results
+
+- **The score ranks, it doesn't measure probability.** It is a weighted sum of five components, so 0.82 means "better than 0.61 in this run", not "82 % likely to be the region". Compare candidates with each other, not against a fixed cutoff.
+- **The thresholds and weights are starting values.** They were chosen by hand and are not yet validated on real data (section 18 of `SPECIFICATION.md`). Treat the ranking as evidence to inspect, not as a verdict.
+- **Read the components, not only the total.** A high `content` with a low `order` is a region whose genes are present but rearranged. A high `order` with a low `content` is a fragment of the region. `spacing` well below 1 means the candidate is stretched or compressed compared with the reference, so look for a large insertion.
+- **`reference_coverage` is the plainest number:** the fraction of reference families represented. `missing_families` names the ones that are absent.
+- **Flags describe the gene structure, not the quality.** `split` and `fusion` mean a reference protein was found in pieces, or one target protein matched several families. `edge` means the candidate lies near a contig end, so the region may continue into the next contig and look shorter than it is. Flags never change the score.
+- **Check the candidate plot and TSV before concluding.** The plot shows which families are present, in what order and orientation; the TSV gives each match's identity and coverage.
+
 ## Options
 
 All settings have defaults, so only `--reference`, `--genome` and `--output` are required. Fractions run from 0 to 1, and identities are percentages.
@@ -278,6 +293,26 @@ Weights are normalised to sum to 1.
 | `--plot-lines-per-page` | `30` | most lines per overview page, reference line included |
 
 `--no-plots` skips the plots. Other options are `--annotation auto|pyrodigal` and, for the reference, `--contig`, `--start` and `--end`.
+
+## Troubleshooting
+
+Every error is one line on stderr and stops the run before writing anything.
+
+- **`DIAMOND executable 'diamond' not found on PATH`** — install DIAMOND (see Install). If it lives somewhere unusual, add that directory to `PATH`.
+- **`DIAMOND 2.0 or newer is required; found 1.x`** — an old DIAMOND is first on `PATH`. Check with `diamond version`.
+- **`record 'X' has no sequence`** — the GenBank file holds annotation without the sequence. On NCBI, download "GenBank (full)" rather than "GenBank"; files saved from a viewer are often sequence-less too.
+- **`min_matches 3 exceeds the 2 reference families`** — the reference region has fewer families than a candidate must represent. Use a larger region, or lower `--min-matches`.
+- **`the reference region has no searchable protein-coding genes`** — the coordinates are wrong, the region has no CDS, or every CDS was skipped (pseudogene, compound location, untranslatable). `analysis.json` lists what was skipped.
+- **`duplicate genome name 'x'`** — two `--genome` files share a file name, which would collide in the output folders. Rename one; the path doesn't matter, only the file name.
+- **`has duplicate gene IDs`** — one contig has two CDS with identical coordinates and strand. Deduplicate the annotation.
+- **`damaged gzip file`** — the compressed input is truncated or corrupt, often a half-finished download. Fetch it again.
+- **`unrecognised format in X; expected GenBank or FASTA`** — the file isn't GenBank or FASTA. The format is read from the content, so an extension alone doesn't decide it.
+
+Other situations:
+
+- **No candidates.** The region may genuinely be absent. If you expect it, lower `--min-reference-coverage` or `--min-matches`, or `--min-identity` for a distant relative, and look at `analysis.json` to confirm the reference families were built as you expected.
+- **A run that seems to hang.** homolocus prints progress, so the last line tells you where it stopped. If it stops at a search, DIAMOND is still running: `--verbose` shows each DIAMOND command so you can try it yourself. DIAMOND itself has occasionally deadlocked here at 0 % CPU; stopping the run with Ctrl-C and starting it again has been enough.
+- **Plots are slow or enormous.** With many genomes, draw fewer lines with `--plot-candidates`, or skip plotting with `--no-plots` and use `summary.tsv`.
 
 ## Limitations in v0.1
 

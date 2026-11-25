@@ -18,6 +18,10 @@ env:
   # Upgrading DIAMOND means changing both values (spec 15).
   DIAMOND_VERSION: "2.2.9"
   DIAMOND_SHA256: "cb0cf1a14b7254e624934a247665605b7d73991c83319337b36c5a827b1d6622"
+  # macOS has no official DIAMOND build, so it comes from Bioconda (spec 15).
+  DIAMOND_BUILD: "h5b4e277_0"
+  MICROMAMBA_VERSION: "2.10.0-0"
+  MICROMAMBA_SHA256: "c547639f5caf742236641c362746abb4a3505774753ecd08fe341643670c4c01"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
@@ -97,6 +101,44 @@ jobs:
           cat floors.txt
           python -m pip install -e . pytest pytest-cov hypothesis -c floors.txt
           python -m pip list
+      - name: Pytest
+        env:
+          HOMOLOCUS_REQUIRE_DIAMOND: "1"
+        run: pytest --cov=homolocus --cov-report=term-missing
+
+  test-macos:
+    name: Tests (macOS, Python 3.13)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Restore DIAMOND
+        id: diamond-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/diamond-macos
+          key: diamond-${{ runner.os }}-${{ env.DIAMOND_VERSION }}-${{ env.DIAMOND_BUILD }}-${{ env.MICROMAMBA_VERSION }}
+      - name: Install DIAMOND from Bioconda
+        if: steps.diamond-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/diamond-macos
+          curl -sSfL -o micromamba \
+            "https://github.com/mamba-org/micromamba-releases/releases/download/${MICROMAMBA_VERSION}/micromamba-osx-arm64"
+          echo "${MICROMAMBA_SHA256}  micromamba" | shasum -a 256 -c -
+          chmod +x micromamba
+          ./micromamba create -y -p ~/diamond-macos/env -c conda-forge -c bioconda \
+            "diamond=${DIAMOND_VERSION}=${DIAMOND_BUILD}"
+      - name: Put DIAMOND on PATH
+        run: |
+          echo "$HOME/diamond-macos/env/bin" >> "$GITHUB_PATH"
+          "$HOME/diamond-macos/env/bin/diamond" version
+      - name: Install
+        run: python -m pip install -e ".[dev]"
       - name: Pytest
         env:
           HOMOLOCUS_REQUIRE_DIAMOND: "1"
