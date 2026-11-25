@@ -1,0 +1,56 @@
+name: Pre-release dependencies
+
+# Runs the full suite against the newest pre-releases of the dependencies, to
+# catch upstream API drift early (spec 15). It never blocks a pull request.
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Upgrading DIAMOND means changing both values (spec 15).
+  DIAMOND_VERSION: "2.2.9"
+  DIAMOND_SHA256: "cb0cf1a14b7254e624934a247665605b7d73991c83319337b36c5a827b1d6622"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  prerelease:
+    name: Tests (dependency pre-releases)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Restore DIAMOND
+        id: diamond-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/diamond
+          key: diamond-${{ runner.os }}-${{ env.DIAMOND_VERSION }}-${{ env.DIAMOND_SHA256 }}
+      - name: Download DIAMOND
+        if: steps.diamond-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/diamond
+          curl -sSfL -o diamond.tar.gz \
+            "https://github.com/bbuchfink/diamond/releases/download/v${DIAMOND_VERSION}/diamond-linux64.tar.gz"
+          echo "${DIAMOND_SHA256}  diamond.tar.gz" | sha256sum -c -
+          tar -xzf diamond.tar.gz -C ~/diamond diamond
+      - name: Put DIAMOND on PATH
+        run: |
+          echo "$HOME/diamond" >> "$GITHUB_PATH"
+          "$HOME/diamond/diamond" version
+      - name: Install with dependency pre-releases
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pip install --upgrade --pre biopython pandas matplotlib pyrodigal
+          python -m pip list
+      - name: Pytest
+        env:
+          HOMOLOCUS_REQUIRE_DIAMOND: "1"
+        run: pytest --cov=homolocus --cov-report=term-missing

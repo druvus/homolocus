@@ -66,6 +66,10 @@ markers = [
 source = ["homolocus"]
 branch = true
 
+[tool.coverage.report]
+# The full suite keeps at least this much branch coverage (spec 15).
+fail_under = 98
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
