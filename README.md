@@ -245,6 +245,7 @@ All settings have defaults, so only `--reference`, `--genome` and `--output` are
 | `--max-hsps` | `0` | HSPs per pair; 0 reports all |
 | `--hsp-evalue` | `0.001` | per-HSP E-value passed to DIAMOND |
 | `--threads` | `unset` | DIAMOND threads; unset leaves DIAMOND's default |
+| `--timeout` | `3600.0` | seconds each DIAMOND command may run before it is stopped |
 
 ### Family grouping
 
@@ -311,7 +312,8 @@ Every error is one line on stderr and stops the run before writing anything.
 Other situations:
 
 - **No candidates.** The region may genuinely be absent. If you expect it, lower `--min-reference-coverage` or `--min-matches`, or `--min-identity` for a distant relative, and look at `analysis.json` to confirm the reference families were built as you expected.
-- **A run that seems to hang.** homolocus prints progress, so the last line tells you where it stopped. If it stops at a search, DIAMOND is still running: `--verbose` shows each DIAMOND command so you can try it yourself. DIAMOND itself has occasionally deadlocked here at 0 % CPU; stopping the run with Ctrl-C and starting it again has been enough.
+- **A run that seems to hang.** homolocus prints progress, so the last line tells you where it stopped. If it stops at a search, DIAMOND is still running: `--verbose` shows each DIAMOND command so you can try it yourself. DIAMOND itself has occasionally stalled at 0 % CPU without exiting. Each DIAMOND command is stopped after an hour by default (`--timeout`), and the run then fails with an error saying so; starting it again has been enough. Raise `--timeout` only if your searches are genuinely that slow.
+- **`DIAMOND blastp did not finish within 3600 s`** — the stall above, caught by the timeout. Run again.
 - **Plots are slow or enormous.** With many genomes, draw fewer lines with `--plot-candidates`, or skip plotting with `--no-plots` and use `summary.tsv`.
 
 ## Limitations in v0.1

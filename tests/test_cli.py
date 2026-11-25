@@ -84,9 +84,11 @@ def test_typed_flags_reach_their_settings() -> None:
         "0.7",
         "--weight-order",
         "0.5",
+        "--timeout",
+        "120",
     )
     assert chosen.search == DiamondSearch(
-        min_identity=40.0, sensitivity="fast", threads=2, max_target_seqs=0
+        min_identity=40.0, sensitivity="fast", threads=2, max_target_seqs=0, timeout=120
     )
     assert chosen.detection == RegionDetection(padding_bp=500, min_reference_coverage=0.6)
     assert chosen.family_grouping == FamilyGrouping(family_min_coverage=0.7)

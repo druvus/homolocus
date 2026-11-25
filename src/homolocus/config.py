@@ -23,7 +23,8 @@ class DiamondSearch:
     to aggregated GeneMatch evidence. ``hsp_evalue`` is the looser per-HSP
     cutoff passed to DIAMOND. ``max_target_seqs`` 0 means unlimited and
     ``max_hsps`` 0 reports all HSPs per pair. ``threads`` None leaves DIAMOND's
-    default.
+    default. ``timeout`` is how many seconds each DIAMOND command may run before
+    it is stopped; None sets no limit.
     """
 
     evalue: float = 1e-5
@@ -33,6 +34,7 @@ class DiamondSearch:
     max_hsps: int = 0
     hsp_evalue: float = 1e-3
     threads: int | None = None
+    timeout: float | None = 3600.0
 
     def __post_init__(self) -> None:
         if self.evalue < 0:
@@ -54,6 +56,8 @@ class DiamondSearch:
             raise ValueError(f"max_hsps {self.max_hsps} must not be negative")
         if self.threads is not None and self.threads < 1:
             raise ValueError(f"threads {self.threads} must be at least 1")
+        if self.timeout is not None and self.timeout <= 0:
+            raise ValueError(f"timeout {self.timeout} must be positive")
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,7 @@
 """Running DIAMOND searches (spec 6.1, 6.3, 6.5)."""
 
 import stat
+import time
 
 import pytest
 
@@ -38,6 +39,18 @@ def test_missing_executable_gives_a_clear_error() -> None:
 def test_version_is_read_from_the_executable(tmp_path) -> None:
     executable = fake_diamond(tmp_path, 'echo "diamond version 2.1.0"\n')
     assert diamond_version(executable) == "2.1.0"
+
+
+def test_a_diamond_command_that_runs_over_its_timeout_is_stopped(tmp_path, proteins) -> None:
+    executable = fake_diamond(
+        tmp_path,
+        'if [ "$1" = version ]; then echo "diamond version 2.1.0"; exit 0; fi\nexec sleep 30\n',
+    )
+    index = ProteinIndex.build(genes("r", proteins.random(50)), genes("t", proteins.random(50)))
+    started = time.monotonic()
+    with pytest.raises(DiamondError, match=r"DIAMOND makedb did not finish within 0\.5 s"):
+        search(index, DiamondSearch(timeout=0.5), tmp_path / "raw.tsv", executable=executable)
+    assert time.monotonic() - started < 10
 
 
 def test_failing_diamond_raises_with_its_message(tmp_path, proteins) -> None:

@@ -39,6 +39,7 @@ OPTION_HELP = {
     "max_hsps": "DIAMOND HSPs per pair; 0 reports all",
     "hsp_evalue": "per-HSP E-value cutoff passed to DIAMOND",
     "threads": "DIAMOND threads; unset leaves DIAMOND's default",
+    "timeout": "seconds each DIAMOND command may run before it is stopped",
     "family_min_identity": "identity linking paralogs into a family, percent",
     "family_min_coverage": "coverage both paralogs must reach, fraction",
     "min_matches": "minimum represented families per candidate (at least 2)",
