@@ -375,8 +375,10 @@ def test_analysis_records_versions_parameters_and_inputs(tmp_path) -> None:
         "n_contigs": 1,
         "n_genes": 6,
     }
+    names = ["sitA", None, "iron ABC transporter permease SitC", None]
     assert data["families"] == [
-        {"id": f"F{n + 1:03d}", "gene_ids": [g.id]} for n, g in enumerate(REF_GENES)
+        {"id": f"F{n + 1:03d}", "name": names[n], "gene_ids": [g.id]}
+        for n, g in enumerate(REF_GENES)
     ]
     assert data["n_candidates"] == 2
     assert data["warnings"] == []
@@ -425,3 +427,19 @@ def test_analysis_is_sorted_indented_and_has_no_timestamp(tmp_path) -> None:
     assert text.endswith("}\n")
     assert text.startswith('{\n  "families"')
     assert "time" not in text.lower()
+
+
+def test_analysis_lists_parse_warnings_of_reference_and_target_before_run_warnings(
+    tmp_path,
+) -> None:
+    reference = replace(REFERENCE, parse_warnings=("contig ref: pseudogene: 1",))
+    genome = replace(
+        GENOME, parse_warnings=("contig t1: 2 untranslatable", "contig t2: pseudogene: 1")
+    )
+    data = analysis(tmp_path, reference=reference, genome=genome, warnings=("careful",))
+    assert data["warnings"] == [
+        "reference: contig ref: pseudogene: 1",
+        "target: contig t1: 2 untranslatable",
+        "target: contig t2: pseudogene: 1",
+        "careful",
+    ]

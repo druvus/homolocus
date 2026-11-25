@@ -20,7 +20,8 @@ class Genome:
 
     ``skipped_features`` lists CDS features excluded while parsing (spec 5.10).
     ``display_name`` is an optional presentation name; ``label`` shows it, or
-    ``name`` without one (spec 5.3).
+    ``name`` without one (spec 5.3). ``parse_warnings`` keeps the text of
+    each per-contig GenBank parse warning (spec 3.2, 14).
     """
 
     contigs: Mapping[str, Contig]
@@ -28,6 +29,7 @@ class Genome:
     source: str | None = None
     skipped_features: tuple[SkippedFeature, ...] = ()
     display_name: str | None = None
+    parse_warnings: tuple[str, ...] = ()
     _genes_by_id: Mapping[str, Gene] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -45,6 +47,12 @@ class Genome:
     def label(self) -> str | None:
         """The name to show: the display name when set, else the name."""
         return self.display_name or self.name
+
+    def __repr__(self) -> str:
+        return (
+            f"Genome(name={self.name!r}, label={self.label!r}, "
+            f"contigs={len(self.contigs)}, genes={len(self._genes_by_id)})"
+        )
 
     def genes(self) -> Iterator[Gene]:
         """Iterate over all genes, contig by contig, each in start order."""

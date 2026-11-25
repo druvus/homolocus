@@ -14,7 +14,8 @@ class ReferenceRegion:
 
     ``start`` and ``end`` are 0-based half-open on the original contig. Genes
     keep their contig coordinates (not rebased) and lie fully inside the
-    region. ``skipped_features`` lists excluded CDS inside the region.
+    region. ``skipped_features`` lists excluded CDS inside the region, and
+    ``parse_warnings`` the GenBank parse warning of the region, if any.
     """
 
     contig_id: str
@@ -25,6 +26,7 @@ class ReferenceRegion:
     name: str | None = None
     source_genome: str | None = None
     skipped_features: tuple[SkippedFeature, ...] = ()
+    parse_warnings: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.contig_id:
@@ -44,6 +46,13 @@ class ReferenceRegion:
             label="the reference region",
         )
         object.__setattr__(self, "genes", genes)
+
+    def __repr__(self) -> str:
+        start, end = to_one_based(self.start, self.end)
+        return (
+            f"ReferenceRegion(contig={self.contig_id!r}, span='{start}-{end}', "
+            f"genes={len(self.genes)})"
+        )
 
     def _check_skipped_features(self) -> None:
         for skipped in self.skipped_features:

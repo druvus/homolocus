@@ -31,15 +31,15 @@ class Gene:
     start: int
     end: int
     strand: Strand
-    nucleotide_sequence: str
-    protein_sequence: str | None
+    nucleotide_sequence: str = field(repr=False)
+    protein_sequence: str | None = field(repr=False)
 
     gene_name: str | None = None
     product: str | None = None
     locus_tag: str | None = None
     protein_id: str | None = None
     partial: bool = False
-    qualifiers: Mapping[str, list[str]] = field(default_factory=dict)
+    qualifiers: Mapping[str, list[str]] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         if not self.contig_id:

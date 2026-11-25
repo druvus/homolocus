@@ -231,6 +231,8 @@ The region detection algorithm must find the reference region even if its orient
 
 Exact field names and validation can be refined during implementation.
 
+- **[PROPOSED]** Printing a model never prints sequences or raw search output. `Gene` and `ReferenceRegion` leave `nucleotide_sequence`, `protein_sequence`, `qualifiers` and `sequence` out of their repr. Collections print a one-line summary: `Contig` its ID, length and number of genes; `Genome` its name, label, contigs and genes; `ReferenceRegion` its contig, 1-based span and genes; `RegionResults` the genome label, families, candidates and best score; `GenomeSetResults` the genomes and total candidates. Equality is unchanged.
+
 ### 5.1 Gene
 
 ```python
@@ -280,12 +282,14 @@ class Genome:
     name: str | None = None
     source: str | None = None
     skipped_features: tuple[SkippedFeature, ...] = ()
+    parse_warnings: tuple[str, ...] = ()   # GenBank parse warnings, one per contig (3.2)
 ```
 
 Preserve all contigs. Provide convenient access to genes across contigs. No assembly QC statistics.
 
 - **[PROPOSED]** `Genome.from_file` sets `name` to the file name without its extension. For a compressed file, a trailing `.gz` (any case) is removed first, so `strain.fna.gz` gives `strain`. Within one run, genome names must be unique and usable as a directory name (not empty, no `/`, not starting with `.`).
 - **[PROPOSED]** `Genome.display_name` is an optional presentation name (never empty). `Genome.label` is the display name when set, else `name`. Labels are what plots, the combined summary, stdout and `analysis.json` show; `name` stays the key for output folders and lookups. Display names, when given, must be unique within a run.
+- **[PROPOSED]** `parse_warnings` keeps the text of each per-contig GenBank parse warning (3.2) on the `Genome` or `ReferenceRegion` it was raised for, so it reaches `analysis.json` (14). Genomes annotated by Pyrodigal have none.
 
 ### 5.4 ReferenceRegion
 
@@ -300,6 +304,7 @@ class ReferenceRegion:
     name: str | None = None
     source_genome: str | None = None
     skipped_features: tuple[SkippedFeature, ...] = ()  # those inside the region
+    parse_warnings: tuple[str, ...] = ()   # GenBank parse warnings, one per contig (3.2)
 ```
 
 Preserve original contig coordinates and orientation. Gene coordinates are not rebased. Include only fully contained CDS. Support both input modes.
@@ -858,7 +863,7 @@ results/
   - The candidate TSV has one row per gene and GeneMatch (genes in genomic order, then reference gene ID), and one row with empty match columns for a gene without matches.
   - Flag tokens are joined with `;` and empty when none: `split`, `fusion`, `partial`, `edge` in the summary; `partial`, `split_fragment`, `fused` on gene rows.
   - Floats are written with 6 significant digits.
-  - `analysis.json` is sorted, indented JSON with `homolocus_version`, `tool_versions` (DIAMOND, Pyrodigal, Biopython), `parameters`, `reference`, `target`, `families`, `reference_genes_without_protein`, `skipped_features`, `untranslatable_genes` (coordinates 1-based) and `warnings`.
+  - `analysis.json` is sorted, indented JSON with `homolocus_version`, `tool_versions` (DIAMOND, Pyrodigal, Biopython), `parameters`, `reference`, `target`, `families` (each with `id`, `name` and `gene_ids`), `reference_genes_without_protein`, `skipped_features`, `untranslatable_genes` (coordinates 1-based) and `warnings`. `warnings` lists the reference's parse warnings prefixed `reference: `, then the target's prefixed `target: `, then the warnings raised during the run, each group in the order raised.
   - Managed files are `summary.tsv`, `candidates/candidate_*.tsv`, `plots/regions.png`, `plots/candidate_*.png`, `alignments/*` and `analysis.json`. Rewriting removes stale `candidate_*.tsv` and `candidate_*.png` files from an earlier run and leaves other files alone.
 - **[PROPOSED]** With several target genomes, `results/<genome>/` holds the layout above for each genome, `results/summary.tsv` lists every candidate of every genome with a leading `genome` column (genomes in input order, then rank), and `results/plots/regions.png` is the combined overview (11). A single genome keeps the flat layout above. Subdirectories of genomes from an earlier run are left alone.
 - **[PROPOSED]** The combined summary's `genome` column holds each genome's label; folders are named after `name`. `analysis.json`'s `target` gains `display_name` (`null` when none).
@@ -1037,6 +1042,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 30. Matched-gene opacity from the identity of its colour match on a fixed scale (50 % at `min_identity`, 100 % at 100 % identity) with an opacity key, 11.
 31. Genome presentation names and order from a `--names` mapping file (file name, tab, name; path ignored), shown as labels while folders keep `name`; unmatched lines warn, malformed or duplicated ones exit 1, 5.3, 11, 12, 13, 14, 16.
 32. gzip-compressed reference and target files, detected from content, with `.gz` removed from genome names, 2.1, 2.2, 5.3, 12.
+33. Short model reprs without sequences or raw output; parse warnings kept on `Genome` and `ReferenceRegion` and written to `analysis.json` with `reference: `/`target: ` prefixes; family names in `analysis.json`, 5, 5.3, 5.4, 14.
 
 **Still open:**
 
