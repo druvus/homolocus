@@ -16,7 +16,13 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from typing import Any, Literal, get_args, get_origin, get_type_hints
 
-from homolocus.config import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
+from homolocus.config import (
+    DiamondSearch,
+    FamilyGrouping,
+    PlotOptions,
+    RegionDetection,
+    ScoringWeights,
+)
 from homolocus.coordinates import to_one_based
 from homolocus.finder import RegionFinder
 from homolocus.genome_names import apply_genome_names, read_genome_names
@@ -54,6 +60,8 @@ OPTION_HELP = {
     "order": "weight of the order component",
     "orientation": "weight of the orientation component",
     "spacing": "weight of the spacing component",
+    "candidates": "candidates drawn per genome in the overview; 0 draws all",
+    "lines_per_page": "most lines per overview page, reference line included",
 }
 """Help text for every configuration field, keyed by field name."""
 
@@ -62,6 +70,7 @@ _CONFIG_GROUPS: tuple[tuple[str, type, str], ...] = (
     ("family grouping", FamilyGrouping, ""),
     ("region detection", RegionDetection, ""),
     ("scoring weights", ScoringWeights, "weight_"),
+    ("plots", PlotOptions, "plot_"),
 )
 _DISABLE_FLAGS = {"family_min_identity": ("--no-family-grouping", "do not group paralogs")}
 
@@ -94,11 +103,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--start and --end must be given together")
     try:
         settings = finder_settings(args)
+        plots = plot_options(args)
     except ValueError as error:
         parser.error(str(error))
     try:
         with _progress_on_stderr(_LOG_LEVELS[args.verbosity]):
             results = _find(args, settings)
+            results.write(args.output, plots)
     except (OSError, ValueError, DiamondError) as error:
         sys.stderr.write(f"homolocus: error: {error}\n")
         return 1
@@ -144,6 +155,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_verbosity(find)
     for title, config, prefix in _CONFIG_GROUPS:
         _add_config_group(find.add_argument_group(title), config, prefix)
+    find.add_argument(
+        "--no-plots", action="store_true", help="write tables and analysis.json only, no plots"
+    )
     return parser
 
 
@@ -158,6 +172,20 @@ def finder_settings(args: argparse.Namespace) -> FinderSettings:
         detection=RegionDetection(**_given(args, RegionDetection, "")),
         scoring=ScoringWeights(**_given(args, ScoringWeights, "weight_")),
     )
+
+
+def plot_options(args: argparse.Namespace) -> PlotOptions | None:
+    """The plot options from parsed flags, or None with ``--no-plots`` (spec 11.4, 13).
+
+    Raises ValueError when ``--no-plots`` is combined with a ``--plot-`` flag
+    or a value breaks a PlotOptions rule.
+    """
+    given = _given(args, PlotOptions, "plot_")
+    if not args.no_plots:
+        return PlotOptions(**given)
+    if given:
+        raise ValueError("--no-plots cannot be combined with --plot- options")
+    return None
 
 
 def _candidate_line(results: RegionResults, rank: int) -> str:
@@ -188,9 +216,7 @@ def _find(args: argparse.Namespace, settings: FinderSettings) -> RegionResults |
         detection=settings.detection,
         scoring=settings.scoring,
     )
-    results = finder.find(genomes[0]) if len(genomes) == 1 else finder.find_all(genomes)
-    results.write(args.output)
-    return results
+    return finder.find(genomes[0]) if len(genomes) == 1 else finder.find_all(genomes)
 
 
 def _add_inputs(parser: argparse.ArgumentParser) -> None:

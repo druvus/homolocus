@@ -443,3 +443,51 @@ def test_analysis_lists_parse_warnings_of_reference_and_target_before_run_warnin
         "target: contig t2: pseudogene: 1",
         "careful",
     ]
+
+
+from homolocus import PlotOptions  # noqa: E402
+
+
+def many(n_candidates: int) -> RegionResults:
+    """The sample results with their two candidates repeated to ``n_candidates``."""
+    found = results()
+    return replace(found, candidates=(found.candidates * n_candidates)[:n_candidates])
+
+
+def titles(figure) -> list[str]:
+    return [axis.get_title(loc="left") for axis in figure.axes if axis.get_title(loc="left")]
+
+
+def test_plot_pages_split_a_long_overview_and_plot_returns_the_first() -> None:
+    options = PlotOptions(candidates=0, lines_per_page=3)
+    pages = many(5).plot_pages(options)
+    assert [len(titles(page)) for page in pages] == [3, 3, 2]
+    assert titles(many(5).plot(options)) == titles(pages[0])
+    assert len(titles(many(5).plot())) == 4  # default: reference and three candidates
+
+
+def test_write_adds_one_png_per_page_and_removes_stale_pages(tmp_path) -> None:
+    many(5).write(tmp_path, plots=PlotOptions(candidates=0, lines_per_page=2))
+    pages = sorted(p.name for p in (tmp_path / "plots").glob("regions*.png"))
+    assert pages == ["regions.png", *(f"regions_00{n}.png" for n in range(2, 6))]
+    many(5).write(tmp_path, plots=PlotOptions(candidates=0, lines_per_page=4))
+    pages = sorted(p.name for p in (tmp_path / "plots").glob("regions*.png"))
+    assert pages == ["regions.png", "regions_002.png"]
+
+
+def test_writing_without_plots_removes_earlier_plots_only(tmp_path) -> None:
+    many(3).write(tmp_path, plots=PlotOptions(candidates=0, lines_per_page=2))
+    (tmp_path / "plots" / "notes.png").write_text("mine")
+    many(3).write(tmp_path, plots=None)
+    assert [p.name for p in (tmp_path / "plots").iterdir()] == ["notes.png"]
+    assert (tmp_path / "candidates" / "candidate_003.tsv").is_file()
+    results().write(tmp_path / "fresh", plots=None)
+    assert not (tmp_path / "fresh" / "plots").exists()
+
+
+def test_analysis_records_the_plot_options_or_none(tmp_path) -> None:
+    results().write(tmp_path / "a", plots=PlotOptions(candidates=5))
+    data = json.loads((tmp_path / "a" / "analysis.json").read_text())
+    assert data["parameters"]["plots"] == {"candidates": 5, "lines_per_page": 30}
+    results().write(tmp_path / "b", plots=None)
+    assert json.loads((tmp_path / "b" / "analysis.json").read_text())["parameters"]["plots"] is None

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from genome_files import fasta, genbank
-from homolocus import DiamondSearch, FamilyGrouping, RegionDetection, ScoringWeights
+from homolocus import DiamondSearch, FamilyGrouping, PlotOptions, RegionDetection, ScoringWeights
 from homolocus.cli import build_parser
 from sample_world import results as sample_results
 
@@ -21,6 +21,7 @@ CONFIGS = (
     (FamilyGrouping, ""),
     (RegionDetection, ""),
     (ScoringWeights, "weight-"),
+    (PlotOptions, "plot-"),
 )
 TABLE_ROW = re.compile(r"^\| `(--[a-z-]+)` \| `([^`]*)` \|", re.MULTILINE)
 

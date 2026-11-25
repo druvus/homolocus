@@ -168,3 +168,26 @@ class ScoringWeights:
 
     def _total(self) -> float:
         return float(sum(getattr(self, name) for name in _COMPONENTS))
+
+
+@dataclass(frozen=True)
+class PlotOptions:
+    """What the written overview plots show (spec 11.1, 11.4).
+
+    ``candidates`` is the most candidate lines drawn per genome, best-ranked
+    first; 0 draws all. An overview longer than ``lines_per_page`` lines is
+    split into pages, each starting with the reference line.
+    """
+
+    candidates: int = 3
+    lines_per_page: int = 30
+
+    def __post_init__(self) -> None:
+        if self.candidates < 0:
+            raise ValueError(f"candidates {self.candidates} must be 0 (all) or more")
+        if self.lines_per_page < 2:
+            raise ValueError(f"lines_per_page {self.lines_per_page} must be at least 2")
+
+
+DEFAULT_PLOTS = PlotOptions()
+"""The plot options used when none are given."""
