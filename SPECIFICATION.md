@@ -905,7 +905,6 @@ homolocus = "homolocus.cli:main"
 - DIAMOND is an external executable checked at runtime.
 - Tests needing DIAMOND are marked `@pytest.mark.diamond` and skipped with a clear message when it is absent.
 - **[DECIDED]** Continuous integration (GitHub Actions, `.github/workflows/tests.yml`) runs `ruff check`, `ruff format --check`, `mypy src` and the full test suite on Python 3.10–3.13 for every pull request and push to `main`. It installs DIAMOND 2.2.9 from the official release, pinned by SHA-256. It sets `HOMOLOCUS_REQUIRE_DIAMOND=1`, which makes a missing DIAMOND a test failure instead of a skip.
-- **[PROPOSED]** A macOS job runs the full suite on Python 3.13 on Apple-silicon runners. DIAMOND comes from Bioconda's `osx-arm64` build, pinned by version and build string (`diamond=2.2.9=h5b4e277_0`), because the official release ships a Linux binary only.
 - **[PROPOSED]** The full suite keeps at least 98 % branch coverage: `fail_under` in the coverage configuration, checked in every CI test job.
 - **[PROPOSED]** A scheduled workflow (`.github/workflows/prerelease.yml`) runs the full suite weekly, and on demand, on Python 3.13 against the newest pre-releases of the dependencies (`pip install --pre`), to catch upstream changes early. It does not block pull requests.
 - **[PROPOSED]** Runtime dependencies carry tested lower bounds and no upper bounds: Biopython 1.80, pandas 2.0, Matplotlib 3.8, Pyrodigal 3.0. A CI job (`minimum versions`) installs exactly these versions on Python 3.10, with NumPy below 2 because pandas 2.0 is built against NumPy 1, and runs the full suite. A floor that cannot be proven is raised, not guessed.
@@ -1059,7 +1058,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 33. Short model reprs without sequences or raw output; parse warnings kept on `Genome` and `ReferenceRegion` and written to `analysis.json` with `reference: `/`target: ` prefixes; family names in `analysis.json`, 5, 5.3, 5.4, 14.
 34. Progress through the `homolocus` logger with no handlers in the package; CLI progress on stderr at INFO with `-q`/`-v`; `--version` with the DIAMOND version; exit code 130 on interrupt, 13.
 35. Overview capped at `PlotOptions.candidates` per genome with a note naming what was left out; pages of at most `lines_per_page` lines (`regions.png`, `regions_002.png`, …); `plot_pages()`; `--no-plots`; `parameters.plots` in `analysis.json`, 11, 11.4, 13, 14.
-36. A macOS CI job with DIAMOND from Bioconda, a 98 % branch-coverage floor, and a weekly pre-release CI job, 15.
+36. A 98 % branch-coverage floor and a weekly pre-release CI job, 15.
 37. A `benchmarks/` directory of real-data checks that report rather than assert, outside the test suite, 16, 17, 18.
 
 **Still open:**
