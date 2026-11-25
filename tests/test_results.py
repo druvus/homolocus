@@ -208,6 +208,7 @@ def test_gene_rows_of_every_candidate_carry_its_id() -> None:
 # Writing the output directory (spec 14)
 
 import json  # noqa: E402
+import re  # noqa: E402
 
 from homolocus import SkippedFeature, SkipReason  # noqa: E402
 
@@ -426,7 +427,20 @@ def test_analysis_is_sorted_indented_and_has_no_timestamp(tmp_path) -> None:
     text = (tmp_path / "analysis.json").read_text()
     assert text.endswith("}\n")
     assert text.startswith('{\n  "families"')
-    assert "time" not in text.lower()
+    assert not re.search(r"\d{4}-\d{2}-\d{2}|\d{2}:\d{2}:\d{2}", text)  # no date or clock time
+    assert not any(TIMESTAMP_KEY.fullmatch(key) for key in json_keys(json.loads(text)))
+
+
+TIMESTAMP_KEY = re.compile(r"(timestamp|time|date|datetime|created|generated)(_at)?")
+
+
+def json_keys(value) -> list[str]:
+    """Every key at any depth of a parsed JSON value."""
+    if isinstance(value, dict):
+        return [key for key, inner in value.items() for key in (key, *json_keys(inner))]
+    if isinstance(value, list):
+        return [key for inner in value for key in json_keys(inner)]
+    return []
 
 
 def test_analysis_lists_parse_warnings_of_reference_and_target_before_run_warnings(

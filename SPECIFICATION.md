@@ -452,12 +452,14 @@ search = DiamondSearch(
     max_hsps=0,                 # explicit; 0 = report all HSPs per pair
     hsp_evalue=1e-3,            # per-HSP cutoff passed to DIAMOND
     threads=None,               # DIAMOND threads; None = DIAMOND's default
+    timeout=3600,               # seconds each DIAMOND command may run; None = no limit
 )
 ```
 
 - **[DECIDED]** `evalue` is the pair-level threshold applied to a pair's best HSP (5.7). DIAMOND's own `--evalue` receives the looser per-HSP cutoff `hsp_evalue` (default 1e-3, never stricter than `evalue`), so weak secondary HSPs of real matches survive and count toward coverage.
 - **[DECIDED]** `threads` sets the number of threads for both `diamond makedb` and `diamond blastp`. `None` passes no flag, leaving DIAMOND's default.
 - **[PROPOSED]** DIAMOND 2.0 or newer is required. The installed version is checked at runtime and recorded in the run metadata.
+- **[PROPOSED]** `timeout` limits how long each `diamond makedb` and `diamond blastp` command may run, in seconds (default 3600). A command that runs over is stopped, and the run fails with a DIAMOND error (exit 1) that names the command and the limit and says DIAMOND may have stalled. `None` sets no limit; a set value must be positive. DIAMOND has been seen to stall at 0 % CPU without exiting; the limit turns that into an error. A stopped search is not retried automatically.
 
 - `min_query_coverage` and `min_subject_coverage` are removed from the search configuration.
 - **Do not use DIAMOND's own `--query-cover`, `--subject-cover` or `--id` filters.** They act per HSP and would contradict the aggregation rule. Filter in Python after aggregation.
@@ -1060,6 +1062,7 @@ Cover biological edge cases, not only successful parsing. Use small synthetic ge
 35. Overview capped at `PlotOptions.candidates` per genome with a note naming what was left out; pages of at most `lines_per_page` lines (`regions.png`, `regions_002.png`, …); `plot_pages()`; `--no-plots`; `parameters.plots` in `analysis.json`, 11, 11.4, 13, 14.
 36. A 98 % branch-coverage floor and a weekly pre-release CI job, 15.
 37. A `benchmarks/` directory of real-data checks that report rather than assert, outside the test suite, 16, 17, 18.
+38. A per-command DIAMOND `timeout` (default 3600 s) that turns a stalled search into an error, with no automatic retry, 6.2, 13.
 
 **Still open:**
 

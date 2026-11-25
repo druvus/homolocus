@@ -16,6 +16,7 @@ def test_defaults_match_the_specification() -> None:
     assert config.max_target_seqs == 100
     assert config.max_hsps == 0
     assert config.threads is None
+    assert config.timeout == 3600
 
 
 @pytest.mark.parametrize(
@@ -28,6 +29,8 @@ def test_defaults_match_the_specification() -> None:
         {"max_target_seqs": 0},
         {"max_hsps": 1},
         {"threads": 1},
+        {"timeout": None},
+        {"timeout": 0.5},
         {"sensitivity": "default"},
         {"sensitivity": "ultra-sensitive"},
     ],
@@ -48,6 +51,8 @@ def test_boundary_values_are_allowed(overrides: dict[str, Any]) -> None:
         ({"max_target_seqs": -1}, "max_target_seqs"),
         ({"max_hsps": -1}, "max_hsps"),
         ({"threads": 0}, "threads"),
+        ({"timeout": 0}, "timeout 0 must be positive"),
+        ({"timeout": -5}, "timeout -5 must be positive"),
     ],
 )
 def test_invalid_settings_are_rejected(overrides: dict[str, Any], message: str) -> None:

@@ -204,8 +204,8 @@ def search(
         query_fasta = _write(Path(workdir) / "queries.faa", index.reference_fasta())
         subject_fasta = _write(Path(workdir) / "subjects.faa", subjects)
         database = Path(workdir) / "subjects"
-        _run(makedb_command(program, subject_fasta, database, config))
-        _run(blastp_command(program, query_fasta, database, raw, config))
+        _run(makedb_command(program, subject_fasta, database, config), config.timeout)
+        _run(blastp_command(program, query_fasta, database, raw, config), config.timeout)
     alignments = parse_tabular(raw.read_text(encoding="utf-8").splitlines(), index)
     if self_search:
         return tuple(a for a in alignments if a.query_id != a.subject_id)
@@ -226,10 +226,19 @@ def _resolve(executable: str) -> str:
     return path
 
 
-def _run(command: list[str]) -> str:
+def _run(command: list[str], timeout: float | None = None) -> str:
+    """Run one DIAMOND command; stop it after ``timeout`` seconds (spec 6.2)."""
     logger.debug("running: %s", shlex.join(command))
     try:
-        completed = subprocess.run(command, check=True, capture_output=True, text=True)
+        completed = subprocess.run(
+            command, check=True, capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.TimeoutExpired as error:
+        raise DiamondError(
+            f"DIAMOND {command[1]} did not finish within {timeout:g} s and was stopped;"
+            " it may have stalled. Run again, or raise the timeout (--timeout)"
+            " if the search is genuinely slow"
+        ) from error
     except subprocess.CalledProcessError as error:
         raise DiamondError(
             f"DIAMOND {command[1]} failed (exit {error.returncode}): {error.stderr.strip()}"
