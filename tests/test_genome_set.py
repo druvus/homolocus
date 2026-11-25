@@ -62,21 +62,6 @@ def test_genome_names_must_be_unique_and_directory_safe(names, message) -> None:
         GenomeSetResults(tuple(named(n) for n in names))
 
 
-@pytest.fixture
-def searches(monkeypatch):
-    """Stand-in for DIAMOND that records each search and finds nothing."""
-    calls: list[bool] = []
-
-    def fake_search(index, config, path, *, self_search=False):
-        path.write_text("")
-        calls.append(self_search)
-        return ()
-
-    monkeypatch.setattr("homolocus.finder.search", fake_search)
-    monkeypatch.setattr("homolocus.finder.diamond_version", lambda: "2.2.9")
-    return calls
-
-
 def test_find_all_runs_the_self_search_once_and_one_search_per_genome(searches) -> None:
     genomes = [replace(GENOME, name=n) for n in ("a", "b", "c")]
     found = RegionFinder(REFERENCE).find_all(genomes)
@@ -251,6 +236,18 @@ def test_labels_must_be_unique_in_a_set() -> None:
         GenomeSetResults((labelled("a", "E. coli"), labelled("b", "E. coli")))
     with pytest.raises(ValueError, match="duplicate genome label 'b'"):
         GenomeSetResults((labelled("a", "b"), named("b")))
+
+
+def test_lookup_by_name_wins_over_another_genomes_label() -> None:
+    found = GenomeSetResults((labelled("a", "c"), labelled("c", "d")))
+    assert found["c"].genome.name == "c"
+    assert found["a"].genome.name == "a"
+    assert found["d"].genome.name == "c"
+
+
+def test_duplicate_names_say_how_to_fix_them() -> None:
+    with pytest.raises(ValueError, match="names come from the file names; rename one of the files"):
+        GenomeSetResults((named("a"), named("a")))
 
 
 def test_find_all_checks_labels_before_any_search(searches) -> None:

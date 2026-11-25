@@ -203,11 +203,15 @@ class GenomeSetResults:
         return len(self.results)
 
     def __getitem__(self, name: str) -> RegionResults:
-        """The results of the genome with this name or label. Raises KeyError otherwise."""
-        for results in self.results:
-            if name in (results.genome.name, results.genome.label):
-                return results
-        raise KeyError(name)
+        """The results of the genome with this name, else this label. Raises KeyError otherwise.
+
+        A name always wins over a label, so a display name can never hide
+        another genome.
+        """
+        by_name = {results.genome.name: results for results in self.results}
+        if name in by_name:
+            return by_name[name]
+        return {results.genome.label: results for results in self.results}[name]
 
     def write(self, output_dir: str | Path) -> None:
         """Write one directory per genome plus a combined summary and plot (spec 14)."""
@@ -241,7 +245,10 @@ def check_genome_names(names: Iterable[str | None]) -> None:
         if "/" in name or name.startswith("."):
             raise ValueError(f"genome name {name!r} is not usable as a directory name")
         if name in seen:
-            raise ValueError(f"duplicate genome name {name!r}; genome names must be unique")
+            raise ValueError(
+                f"duplicate genome name {name!r}; genome names must be unique "
+                "(names come from the file names; rename one of the files)"
+            )
         seen.add(name)
 
 
