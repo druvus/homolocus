@@ -48,6 +48,12 @@ class Genome:
         """The name to show: the display name when set, else the name."""
         return self.display_name or self.name
 
+    def __repr__(self) -> str:
+        return (
+            f"Genome(name={self.name!r}, label={self.label!r}, "
+            f"contigs={len(self.contigs)}, genes={len(self._genes_by_id)})"
+        )
+
     def genes(self) -> Iterator[Gene]:
         """Iterate over all genes, contig by contig, each in start order."""
         for contig in self.contigs.values():

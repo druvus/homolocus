@@ -37,3 +37,6 @@ class Contig:
     def n_genes(self) -> int:
         """Number of genes on the contig."""
         return len(self.genes)
+
+    def __repr__(self) -> str:
+        return f"Contig(id={self.id!r}, length={self.length}, genes={self.n_genes})"

@@ -98,6 +98,14 @@ class RegionResults:
         """The top-ranked candidate, or None when nothing passed."""
         return self.candidates[0] if self.candidates else None
 
+    def __repr__(self) -> str:
+        best = self.best_candidate
+        best_score = None if best is None else round(best.score, 3)
+        return (
+            f"RegionResults(genome={self.genome.label!r}, families={len(self.families)}, "
+            f"candidates={len(self.candidates)}, best_score={best_score})"
+        )
+
     @staticmethod
     def candidate_id(rank: int) -> str:
         """ID of the candidate at a 1-based rank: ``candidate_001``, ..."""
@@ -198,6 +206,10 @@ class GenomeSetResults:
 
     def __iter__(self) -> Iterator[RegionResults]:
         return iter(self.results)
+
+    def __repr__(self) -> str:
+        candidates = sum(len(r.candidates) for r in self.results)
+        return f"GenomeSetResults(genomes={len(self.results)}, candidates={candidates})"
 
     def __len__(self) -> int:
         return len(self.results)

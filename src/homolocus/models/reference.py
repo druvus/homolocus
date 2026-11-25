@@ -47,6 +47,13 @@ class ReferenceRegion:
         )
         object.__setattr__(self, "genes", genes)
 
+    def __repr__(self) -> str:
+        start, end = to_one_based(self.start, self.end)
+        return (
+            f"ReferenceRegion(contig={self.contig_id!r}, span='{start}-{end}', "
+            f"genes={len(self.genes)})"
+        )
+
     def _check_skipped_features(self) -> None:
         for skipped in self.skipped_features:
             inside = self.start <= skipped.start and skipped.end <= self.end

@@ -26,6 +26,7 @@ All notable changes to homolocus are recorded here. The format follows [Keep a C
 - Clearer errors: a GenBank file saved without its sequence names the file and record and says how to fix it; duplicate gene IDs are listed; duplicate genome names say they come from the file names.
 - `GenomeSetResults[key]` looks up genome names before display names, so a display name can no longer hide another genome.
 - `analysis.json` `warnings` now include the GenBank parse warnings of the reference and the target (prefixed `reference: ` and `target: `), before the warnings of the run. `Genome.parse_warnings` and `ReferenceRegion.parse_warnings` keep them in the API.
+- Printing a genome, contig, reference or results shows a one-line summary instead of every sequence and the raw DIAMOND output, so they stay readable in notebooks. Genes are printed without their sequences and qualifiers. Equality is unchanged.
 - An interrupted `homolocus find` (Ctrl-C) prints `homolocus: interrupted` and exits with 130 instead of a traceback.
 
 ## [0.1.0] - Unreleased
